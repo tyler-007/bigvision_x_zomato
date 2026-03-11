@@ -27,9 +27,14 @@ class Restaurant(BaseModel):
     name: str
     cuisine_types: list[str]
     rating: float
+    review_count: int = Field(0, ge=0, description="Total number of reviews on Zomato")
     distance_km: float
     delivery_time_minutes: int
     menu: list[MenuItem] = Field(default_factory=list)
+
+    def is_trustworthy(self, min_reviews: int = 1000) -> bool:
+        """Returns True only if restaurant has enough reviews to be considered reliable."""
+        return self.review_count >= min_reviews
 
     def affordable_items(self, max_base_price: float) -> list[MenuItem]:
         """

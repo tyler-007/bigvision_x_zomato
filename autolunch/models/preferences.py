@@ -90,6 +90,13 @@ class UserPreferences(BaseModel):
         description="Only show restaurants with rating ≥ this value",
     )
 
+    # Q5b — Minimum review count (social proof filter)
+    min_review_count: int = Field(
+        default=1000,
+        ge=0,
+        description="Only show restaurants with at least this many total reviews (0 = no filter)",
+    )
+
     # Q6 — Budget (mirrored from settings but set here for LLM context)
     max_net_budget_inr: int = Field(
         default=250,
