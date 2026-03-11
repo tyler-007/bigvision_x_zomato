@@ -1,5 +1,14 @@
 {
-    "past_orders": [],
-    "rejections": [],
-    "learned_blocks": []
+  "past_orders": [],
+  "rejections": [
+    {
+      "rejection_date": "2026-03-12",
+      "suggested_restaurant": "Haldiram's",
+      "suggested_item": "Dal Makhani + 2 Roti",
+      "suggested_net_total": 195.95,
+      "user_reason": "Too heavy for today, want something lighter",
+      "llm_extracted_constraint": "Avoid heavy, rich dishes; suggest lighter options for lunch."
+    }
+  ],
+  "learned_blocks": []
 }
