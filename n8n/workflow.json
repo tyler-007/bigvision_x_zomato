@@ -24,7 +24,7 @@
         },
         {
             "parameters": {
-                "command": "cd /path/to/bigivision_x_zomato && source .venv/bin/activate && python -m autolunch.cli decide 2>/dev/null"
+                "command": "/bin/bash '/Users/aayushjain/codes/projects/personal projects/bigivision_x_zomato/scripts/run.sh' decide"
             },
             "id": "node-decide",
             "name": "Run LLM Decision Engine",
@@ -247,7 +247,7 @@
         },
         {
             "parameters": {
-                "command": "={{ 'cd /path/to/bigivision_x_zomato && source .venv/bin/activate && python -m autolunch.cli checkout --cart-id ' + $json.cart_id + ' 2>/dev/null' }}"
+                "command": "={{ '/bin/bash \'/Users/aayushjain/codes/projects/personal projects/bigivision_x_zomato/scripts/run.sh\' checkout ' + $json.cart_id }}"
             },
             "id": "node-checkout",
             "name": "Trigger Zomato Checkout",
@@ -376,7 +376,7 @@
         },
         {
             "parameters": {
-                "command": "={{ 'cd /path/to/bigivision_x_zomato && source .venv/bin/activate && python -m autolunch.cli reject --restaurant \"' + $json.restaurant_name + '\" --item \"' + $json.item_name + '\" --cart-id \"' + $json.cart_id + '\" --net-total ' + $json.net_total + ' --reason \"' + $json.reason + '\" 2>/dev/null' }}"
+                "command": "={{ '/bin/bash \'/Users/aayushjain/codes/projects/personal projects/bigivision_x_zomato/scripts/run.sh\' reject ' + $json.restaurant_name + ' ' + $json.item_name + ' ' + $json.cart_id + ' ' + $json.net_total + ' ' + $json.reason }}"
             },
             "id": "node-record-reject",
             "name": "Record Rejection + Re-decide",
