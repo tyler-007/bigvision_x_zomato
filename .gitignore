@@ -1,0 +1,33 @@
+# ── Secrets ──────────────────────────────
+.env
+secrets/
+
+# ── Python ───────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyc
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# ── Logs ─────────────────────────────────
+logs/
+*.log
+*.log.gz
+
+# ── Editor ───────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ── Data (keep structure, not content) ───
+# Uncomment below if you don't want to commit memory/prefs:
+# data/memory.json
+# data/preferences.json
