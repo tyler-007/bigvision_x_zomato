@@ -24,12 +24,14 @@
         },
         {
             "parameters": {
-                "command": "/bin/bash '/Users/aayushjain/codes/projects/personal projects/bigivision_x_zomato/scripts/run.sh' decide"
+                "method": "POST",
+                "url": "http://localhost:8100/decide",
+                "options": {}
             },
             "id": "node-decide",
             "name": "Run LLM Decision Engine",
-            "type": "n8n-nodes-base.executeCommand",
-            "typeVersion": 1,
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
             "position": [
                 200,
                 0
@@ -38,7 +40,7 @@
         },
         {
             "parameters": {
-                "jsCode": "const raw = $input.first().json.stdout;\ntry {\n  const parsed = JSON.parse(raw);\n  return [{ json: parsed }];\n} catch(e) {\n  throw new Error('Failed to parse decision engine output: ' + raw);\n}"
+                "jsCode": "// /decide returns JSON directly \u2014 no stdout parsing needed\nreturn [{ json: $input.first().json }];"
             },
             "id": "node-parse",
             "name": "Parse Decision JSON",
@@ -81,7 +83,7 @@
                             "type": "header",
                             "text": {
                                 "type": "plain_text",
-                                "text": "🍱 AutoLunch — Today's Suggestion"
+                                "text": "\ud83c\udf71 AutoLunch \u2014 Today's Suggestion"
                             }
                         },
                         {
@@ -97,11 +99,11 @@
                                 },
                                 {
                                     "type": "mrkdwn",
-                                    "text": "={{ '*Distance*\\n' + $json.distance_km + 'km · ~' + $json.delivery_minutes + 'min' }}"
+                                    "text": "={{ '*Distance*\\n' + $json.distance_km + 'km \u00b7 ~' + $json.delivery_minutes + 'min' }}"
                                 },
                                 {
                                     "type": "mrkdwn",
-                                    "text": "={{ '*Rating*\\n' + $json.rating + '⭐ (' + $json.review_count + ' reviews)' }}"
+                                    "text": "={{ '*Rating*\\n' + $json.rating + '\u2b50 (' + $json.review_count + ' reviews)' }}"
                                 }
                             ]
                         },
@@ -113,19 +115,19 @@
                             "fields": [
                                 {
                                     "type": "mrkdwn",
-                                    "text": "={{ '*Base*\\n₹' + $json.base_price }}"
+                                    "text": "={{ '*Base*\\n\u20b9' + $json.base_price }}"
                                 },
                                 {
                                     "type": "mrkdwn",
-                                    "text": "={{ '*Delivery*\\n₹' + $json.delivery_fee + ' (Gold 🥇)' }}"
+                                    "text": "={{ '*Delivery*\\n\u20b9' + $json.delivery_fee + ' (Gold \ud83e\udd47)' }}"
                                 },
                                 {
                                     "type": "mrkdwn",
-                                    "text": "={{ '*GST + Platform*\\n₹' + ($json.gst + $json.platform_fee).toFixed(2) }}"
+                                    "text": "={{ '*GST + Platform*\\n\u20b9' + ($json.gst + $json.platform_fee).toFixed(2) }}"
                                 },
                                 {
                                     "type": "mrkdwn",
-                                    "text": "={{ '*NET TOTAL*\\n*₹' + $json.net_total + '* ✅' }}"
+                                    "text": "={{ '*NET TOTAL*\\n*\u20b9' + $json.net_total + '* \u2705' }}"
                                 }
                             ]
                         },
@@ -134,7 +136,7 @@
                             "elements": [
                                 {
                                     "type": "mrkdwn",
-                                    "text": "={{ '🤖 _' + $json.reasoning + '_' }}"
+                                    "text": "={{ '\ud83e\udd16 _' + $json.reasoning + '_' }}"
                                 }
                             ]
                         },
@@ -149,7 +151,7 @@
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": "✅ Yes, Order This!"
+                                        "text": "\u2705 Yes, Order This!"
                                     },
                                     "style": "primary",
                                     "value": "={{ 'approve|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.item_name + '|' + $json.net_total }}",
@@ -159,7 +161,7 @@
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": "❌ No, Suggest Again"
+                                        "text": "\u274c No, Suggest Again"
                                     },
                                     "style": "danger",
                                     "value": "={{ 'reject|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.item_name + '|' + $json.net_total }}",
@@ -169,7 +171,7 @@
                         }
                     ]
                 },
-                "text": "={{ '🍱 ' + $json.item_name + ' from ' + $json.restaurant_name + ' — ₹' + $json.net_total }}"
+                "text": "={{ '\ud83c\udf71 ' + $json.item_name + ' from ' + $json.restaurant_name + ' \u2014 \u20b9' + $json.net_total }}"
             },
             "id": "node-slack-suggest",
             "name": "Send Slack Suggestion",
@@ -195,7 +197,7 @@
                 800,
                 200
             ],
-            "notes": "Set this URL in your Slack App → Interactivity → Request URL"
+            "notes": "Set this URL in your Slack App \u2192 Interactivity \u2192 Request URL"
         },
         {
             "parameters": {
@@ -247,21 +249,26 @@
         },
         {
             "parameters": {
-                "command": "={{ '/bin/bash \'/Users/aayushjain/codes/projects/personal projects/bigivision_x_zomato/scripts/run.sh\' checkout ' + $json.cart_id }}"
+                "method": "POST",
+                "url": "http://localhost:8100/checkout",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ cart_id: $json.cart_id }) }}",
+                "options": {}
             },
             "id": "node-checkout",
             "name": "Trigger Zomato Checkout",
-            "type": "n8n-nodes-base.executeCommand",
-            "typeVersion": 1,
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
             "position": [
                 1600,
                 100
             ],
-            "notes": "Calls Zomato MCP checkout → returns UPI payment link"
+            "notes": "Calls Zomato MCP checkout \u2192 returns UPI payment link"
         },
         {
             "parameters": {
-                "jsCode": "const raw = $input.first().json.stdout;\nconst data = JSON.parse(raw);\nreturn [{ json: data }];"
+                "jsCode": "// /checkout returns JSON directly\nreturn [{ json: $input.first().json }];"
             },
             "id": "node-parse-checkout",
             "name": "Parse Checkout Result",
@@ -278,7 +285,7 @@
                 "resource": "message",
                 "operation": "post",
                 "channel": "={{ $env.SLACK_CHANNEL_ID }}",
-                "text": "={{ '💳 *Pay Now — ₹' + $json.amount + '*\\n\\n*Order ID:* `' + $json.order_id + '`\\n*Delivery:* ~' + $json.estimated_delivery_minutes + ' minutes\\n\\n<' + $json.upi_payment_link + '|👆 Tap here to pay via UPI>' }}"
+                "text": "={{ '\ud83d\udcb3 *Pay Now \u2014 \u20b9' + $json.amount + '*\\n\\n*Order ID:* `' + $json.order_id + '`\\n*Delivery:* ~' + $json.estimated_delivery_minutes + ' minutes\\n\\n<' + $json.upi_payment_link + '|\ud83d\udc46 Tap here to pay via UPI>' }}"
             },
             "id": "node-send-upi",
             "name": "Send UPI Payment Link",
@@ -329,7 +336,7 @@
                 "resource": "message",
                 "operation": "post",
                 "channel": "={{ $env.SLACK_CHANNEL_ID }}",
-                "text": "✋ *AutoLunch: Order Manually Today*\n\nYou've passed on 2 suggestions. No problem — today's your call! Tap here to open Zomato: https://www.zomato.com/"
+                "text": "\u270b *AutoLunch: Order Manually Today*\n\nYou've passed on 2 suggestions. No problem \u2014 today's your call! Tap here to open Zomato: https://www.zomato.com/"
             },
             "id": "node-manual-fallback",
             "name": "Send Manual Order Notice",
@@ -346,7 +353,7 @@
                 "resource": "message",
                 "operation": "post",
                 "channel": "={{ $env.SLACK_CHANNEL_ID }}",
-                "text": "Got it! 👎 Why didn't you want that? _(reply here — I'll remember it for next time)_"
+                "text": "Got it! \ud83d\udc4e Why didn't you want that? _(reply here \u2014 I'll remember it for next time)_"
             },
             "id": "node-ask-reason",
             "name": "Ask Rejection Reason",
@@ -376,12 +383,17 @@
         },
         {
             "parameters": {
-                "command": "={{ '/bin/bash \'/Users/aayushjain/codes/projects/personal projects/bigivision_x_zomato/scripts/run.sh\' reject ' + $json.restaurant_name + ' ' + $json.item_name + ' ' + $json.cart_id + ' ' + $json.net_total + ' ' + $json.reason }}"
+                "method": "POST",
+                "url": "http://localhost:8100/reject",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ restaurant_name: $json.restaurant_name, item_name: $json.item_name, cart_id: $json.cart_id, net_total: $json.net_total, reason: $json.reason }) }}",
+                "options": {}
             },
             "id": "node-record-reject",
             "name": "Record Rejection + Re-decide",
-            "type": "n8n-nodes-base.executeCommand",
-            "typeVersion": 1,
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
             "position": [
                 2400,
                 200
@@ -394,7 +406,7 @@
                 "resource": "message",
                 "operation": "post",
                 "channel": "={{ $env.SLACK_CHANNEL_ID }}",
-                "text": "={{ '⚠️ *AutoLunch Error*\\n\\n' + $json.status_message + '\\n\\nPlease order manually today: https://www.zomato.com/' }}"
+                "text": "={{ '\u26a0\ufe0f *AutoLunch Error*\\n\\n' + $json.status_message + '\\n\\nPlease order manually today: https://www.zomato.com/' }}"
             },
             "id": "node-error-alert",
             "name": "Send Error Alert",
