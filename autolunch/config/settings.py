@@ -28,11 +28,12 @@ class ZomatoSettings(BaseSettings):
     min_restaurant_rating: float = Field(4.0, ge=1.0, le=5.0, description="Minimum restaurant rating")
 
 
-class TelegramSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="TELEGRAM_", extra="ignore")
+class SlackSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="SLACK_", extra="ignore")
 
-    bot_token: str = Field(..., description="Telegram bot token")
-    chat_id: str = Field(..., description="Telegram personal chat ID")
+    bot_token: str = Field(..., description="Slack Bot OAuth token (xoxb-...)")
+    channel_id: str = Field(..., description="DM channel ID to send lunch suggestions (starts with D)")
+    signing_secret: str = Field(..., description="Slack signing secret for verifying interactive payloads")
 
 
 class GoogleSettings(BaseSettings):
@@ -58,7 +59,7 @@ class AppSettings(BaseSettings):
     # Nested settings — loaded separately to keep env prefix scoping clean
     openrouter: OpenRouterSettings = Field(default_factory=OpenRouterSettings)
     zomato: ZomatoSettings = Field(default_factory=ZomatoSettings)
-    telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    slack: SlackSettings = Field(default_factory=SlackSettings)
     google: GoogleSettings = Field(default_factory=GoogleSettings)
 
     @model_validator(mode="after")

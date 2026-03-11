@@ -1,0 +1,589 @@
+{
+    "name": "AutoLunch - Daily Lunch Ordering",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "45 12 * * 1-5"
+                        }
+                    ]
+                }
+            },
+            "id": "node-cron",
+            "name": "12:45 PM Trigger (Mon-Fri)",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                0,
+                0
+            ],
+            "notes": "Fires at 12:45 PM every weekday. Food arrives ~1:30 PM."
+        },
+        {
+            "parameters": {
+                "command": "cd /path/to/bigivision_x_zomato && source .venv/bin/activate && python -m autolunch.cli decide 2>/dev/null"
+            },
+            "id": "node-decide",
+            "name": "Run LLM Decision Engine",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                200,
+                0
+            ],
+            "notes": "Returns JSON: {status, restaurant_name, item_name, net_total, cart_id, ...}"
+        },
+        {
+            "parameters": {
+                "jsCode": "const raw = $input.first().json.stdout;\ntry {\n  const parsed = JSON.parse(raw);\n  return [{ json: parsed }];\n} catch(e) {\n  throw new Error('Failed to parse decision engine output: ' + raw);\n}"
+            },
+            "id": "node-parse",
+            "name": "Parse Decision JSON",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                400,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.status }}",
+                            "value2": "ok"
+                        }
+                    ]
+                }
+            },
+            "id": "node-check-status",
+            "name": "Decision OK?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                600,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "authentication": "oAuth2",
+                "resource": "message",
+                "operation": "post",
+                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
+                "blocksUi": {
+                    "blocksValues": [
+                        {
+                            "type": "header",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "🍱 AutoLunch — Today's Suggestion"
+                            }
+                        },
+                        {
+                            "type": "section",
+                            "fields": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "={{ '*Item*\\n' + $json.item_name }}"
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "={{ '*Restaurant*\\n' + $json.restaurant_name }}"
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "={{ '*Distance*\\n' + $json.distance_km + 'km · ~' + $json.delivery_minutes + 'min' }}"
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "={{ '*Rating*\\n' + $json.rating + '⭐ (' + $json.review_count + ' reviews)' }}"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "divider"
+                        },
+                        {
+                            "type": "section",
+                            "fields": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "={{ '*Base*\\n₹' + $json.base_price }}"
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "={{ '*Delivery*\\n₹' + $json.delivery_fee + ' (Gold 🥇)' }}"
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "={{ '*GST + Platform*\\n₹' + ($json.gst + $json.platform_fee).toFixed(2) }}"
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "={{ '*NET TOTAL*\\n*₹' + $json.net_total + '* ✅' }}"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "context",
+                            "elements": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": "={{ '🤖 _' + $json.reasoning + '_' }}"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "divider"
+                        },
+                        {
+                            "type": "actions",
+                            "block_id": "={{ $json.cart_id }}",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "✅ Yes, Order This!"
+                                    },
+                                    "style": "primary",
+                                    "value": "={{ 'approve|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.item_name + '|' + $json.net_total }}",
+                                    "action_id": "autolunch_approve"
+                                },
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "❌ No, Suggest Again"
+                                    },
+                                    "style": "danger",
+                                    "value": "={{ 'reject|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.item_name + '|' + $json.net_total }}",
+                                    "action_id": "autolunch_reject"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "text": "={{ '🍱 ' + $json.item_name + ' from ' + $json.restaurant_name + ' — ₹' + $json.net_total }}"
+            },
+            "id": "node-slack-suggest",
+            "name": "Send Slack Suggestion",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.1,
+            "position": [
+                800,
+                -100
+            ]
+        },
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "autolunch-hitl",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "node-webhook",
+            "name": "Slack Interaction Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1.1,
+            "position": [
+                800,
+                200
+            ],
+            "notes": "Set this URL in your Slack App → Interactivity → Request URL"
+        },
+        {
+            "parameters": {
+                "respondWith": "text",
+                "responseBody": ""
+            },
+            "id": "node-ack",
+            "name": "Acknowledge Slack (200 OK)",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                1000,
+                200
+            ],
+            "notes": "Slack requires a 200 response within 3 seconds or it retries"
+        },
+        {
+            "parameters": {
+                "jsCode": "const body = $input.first().json.body;\nconst payload = JSON.parse(decodeURIComponent(body.replace('payload=', '')));\nconst action = payload.actions[0];\nconst parts = action.value.split('|');\nreturn [{\n  json: {\n    action_type: parts[0],\n    cart_id: parts[1],\n    restaurant_name: parts[2],\n    item_name: parts[3],\n    net_total: parseFloat(parts[4]),\n    user_id: payload.user.id,\n    channel: payload.channel.id,\n    message_ts: payload.message.ts\n  }\n}];"
+            },
+            "id": "node-parse-action",
+            "name": "Parse Slack Action",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1200,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.action_type }}",
+                            "value2": "approve"
+                        }
+                    ]
+                }
+            },
+            "id": "node-route-action",
+            "name": "Approved or Rejected?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1400,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "command": "={{ 'cd /path/to/bigivision_x_zomato && source .venv/bin/activate && python -m autolunch.cli checkout --cart-id ' + $json.cart_id + ' 2>/dev/null' }}"
+            },
+            "id": "node-checkout",
+            "name": "Trigger Zomato Checkout",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                1600,
+                100
+            ],
+            "notes": "Calls Zomato MCP checkout → returns UPI payment link"
+        },
+        {
+            "parameters": {
+                "jsCode": "const raw = $input.first().json.stdout;\nconst data = JSON.parse(raw);\nreturn [{ json: data }];"
+            },
+            "id": "node-parse-checkout",
+            "name": "Parse Checkout Result",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1800,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "authentication": "oAuth2",
+                "resource": "message",
+                "operation": "post",
+                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
+                "text": "={{ '💳 *Pay Now — ₹' + $json.amount + '*\\n\\n*Order ID:* `' + $json.order_id + '`\\n*Delivery:* ~' + $json.estimated_delivery_minutes + ' minutes\\n\\n<' + $json.upi_payment_link + '|👆 Tap here to pay via UPI>' }}"
+            },
+            "id": "node-send-upi",
+            "name": "Send UPI Payment Link",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.1,
+            "position": [
+                2000,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Track rejection count in workflow static data\nconst staticData = $getWorkflowStaticData('global');\nconst today = new Date().toISOString().split('T')[0];\nif (staticData.rejectionDate !== today) {\n  staticData.rejectionCount = 0;\n  staticData.rejectionDate = today;\n}\nstaticData.rejectionCount = (staticData.rejectionCount || 0) + 1;\nreturn [{ json: { ...($input.first().json), rejection_count: staticData.rejectionCount } }];"
+            },
+            "id": "node-count-rejections",
+            "name": "Count Today's Rejections",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1600,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "number": [
+                        {
+                            "value1": "={{ $json.rejection_count }}",
+                            "operation": "largerEqual",
+                            "value2": 2
+                        }
+                    ]
+                }
+            },
+            "id": "node-max-rejections",
+            "name": "Max Rejections Hit?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [
+                1800,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "authentication": "oAuth2",
+                "resource": "message",
+                "operation": "post",
+                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
+                "text": "✋ *AutoLunch: Order Manually Today*\n\nYou've passed on 2 suggestions. No problem — today's your call! Tap here to open Zomato: https://www.zomato.com/"
+            },
+            "id": "node-manual-fallback",
+            "name": "Send Manual Order Notice",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.1,
+            "position": [
+                2000,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "authentication": "oAuth2",
+                "resource": "message",
+                "operation": "post",
+                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
+                "text": "Got it! 👎 Why didn't you want that? _(reply here — I'll remember it for next time)_"
+            },
+            "id": "node-ask-reason",
+            "name": "Ask Rejection Reason",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.1,
+            "position": [
+                2000,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "autolunch-reason",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "node-reason-webhook",
+            "name": "Rejection Reason Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1.1,
+            "position": [
+                2200,
+                200
+            ],
+            "notes": "Triggered when user types their rejection reason in Slack"
+        },
+        {
+            "parameters": {
+                "command": "={{ 'cd /path/to/bigivision_x_zomato && source .venv/bin/activate && python -m autolunch.cli reject --restaurant \"' + $json.restaurant_name + '\" --item \"' + $json.item_name + '\" --cart-id \"' + $json.cart_id + '\" --net-total ' + $json.net_total + ' --reason \"' + $json.reason + '\" 2>/dev/null' }}"
+            },
+            "id": "node-record-reject",
+            "name": "Record Rejection + Re-decide",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                2400,
+                200
+            ],
+            "notes": "Saves rejection to memory + runs decision engine again with new constraint"
+        },
+        {
+            "parameters": {
+                "authentication": "oAuth2",
+                "resource": "message",
+                "operation": "post",
+                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
+                "text": "={{ '⚠️ *AutoLunch Error*\\n\\n' + $json.status_message + '\\n\\nPlease order manually today: https://www.zomato.com/' }}"
+            },
+            "id": "node-error-alert",
+            "name": "Send Error Alert",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.1,
+            "position": [
+                800,
+                200
+            ]
+        }
+    ],
+    "connections": {
+        "12:45 PM Trigger (Mon-Fri)": {
+            "main": [
+                [
+                    {
+                        "node": "Run LLM Decision Engine",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Run LLM Decision Engine": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Decision JSON",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Decision JSON": {
+            "main": [
+                [
+                    {
+                        "node": "Decision OK?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Decision OK?": {
+            "main": [
+                [
+                    {
+                        "node": "Send Slack Suggestion",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Send Error Alert",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Slack Interaction Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Acknowledge Slack (200 OK)",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Parse Slack Action",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Slack Action": {
+            "main": [
+                [
+                    {
+                        "node": "Approved or Rejected?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Approved or Rejected?": {
+            "main": [
+                [
+                    {
+                        "node": "Trigger Zomato Checkout",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Count Today's Rejections",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Trigger Zomato Checkout": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Checkout Result",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Checkout Result": {
+            "main": [
+                [
+                    {
+                        "node": "Send UPI Payment Link",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Count Today's Rejections": {
+            "main": [
+                [
+                    {
+                        "node": "Max Rejections Hit?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Max Rejections Hit?": {
+            "main": [
+                [
+                    {
+                        "node": "Send Manual Order Notice",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Ask Rejection Reason",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Ask Rejection Reason": {
+            "main": [
+                [
+                    {
+                        "node": "Rejection Reason Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Rejection Reason Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Record Rejection + Re-decide",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1",
+        "saveManualExecutions": true,
+        "callerPolicy": "workflowsFromSameOwner",
+        "errorWorkflow": "autolunch-error-handler"
+    },
+    "meta": {
+        "instanceId": "autolunch-v1"
+    }
+}
