@@ -73,105 +73,13 @@
         },
         {
             "parameters": {
-                "authentication": "oAuth2",
-                "resource": "message",
-                "operation": "post",
-                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
-                "blocksUi": {
-                    "blocksValues": [
-                        {
-                            "type": "header",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "\ud83c\udf71 AutoLunch \u2014 Today's Suggestion"
-                            }
-                        },
-                        {
-                            "type": "section",
-                            "fields": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "={{ '*Item*\\n' + $json.item_name }}"
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "={{ '*Restaurant*\\n' + $json.restaurant_name }}"
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "={{ '*Distance*\\n' + $json.distance_km + 'km \u00b7 ~' + $json.delivery_minutes + 'min' }}"
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "={{ '*Rating*\\n' + $json.rating + '\u2b50 (' + $json.review_count + ' reviews)' }}"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "divider"
-                        },
-                        {
-                            "type": "section",
-                            "fields": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "={{ '*Base*\\n\u20b9' + $json.base_price }}"
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "={{ '*Delivery*\\n\u20b9' + $json.delivery_fee + ' (Gold \ud83e\udd47)' }}"
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "={{ '*GST + Platform*\\n\u20b9' + ($json.gst + $json.platform_fee).toFixed(2) }}"
-                                },
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "={{ '*NET TOTAL*\\n*\u20b9' + $json.net_total + '* \u2705' }}"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "context",
-                            "elements": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": "={{ '\ud83e\udd16 _' + $json.reasoning + '_' }}"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "divider"
-                        },
-                        {
-                            "type": "actions",
-                            "block_id": "={{ $json.cart_id }}",
-                            "elements": [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": "\u2705 Yes, Order This!"
-                                    },
-                                    "style": "primary",
-                                    "value": "={{ 'approve|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.item_name + '|' + $json.net_total }}",
-                                    "action_id": "autolunch_approve"
-                                },
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": "\u274c No, Suggest Again"
-                                    },
-                                    "style": "danger",
-                                    "value": "={{ 'reject|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.item_name + '|' + $json.net_total }}",
-                                    "action_id": "autolunch_reject"
-                                }
-                            ]
-                        }
-                    ]
-                },
-                "text": "={{ '\ud83c\udf71 ' + $json.item_name + ' from ' + $json.restaurant_name + ' \u2014 \u20b9' + $json.net_total }}"
+                "operation": "custom",
+                "customMethod": "POST",
+                "customEndpoint": "chat.postMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "{\n  \"channel\": \"={{ $parameter.userId }}\",\n  \"text\": \"={{ '\ud83c\udf71 ' + $json.item_name + ' from ' + $json.restaurant_name + ' \u2014 \u20b9' + $json.net_total }}\",\n  \"blocks\": [\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"\ud83c\udf71 AutoLunch \u2014 Today's Suggestion\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*{{$json.item_name}}*\n{{$json.restaurant_name}}\n\n*Net Total:* \u20b9{{$json.net_total}}\"\n      }\n    },\n    {\n      \"type\": \"actions\",\n      \"block_id\": \"lunch_decision\",\n      \"elements\": [\n        {\n          \"type\": \"button\",\n          \"text\": {\n            \"type\": \"plain_text\",\n            \"text\": \"\u2705 Approve (Order It)\"\n          },\n          \"style\": \"primary\",\n          \"value\": \"approve_{{$json.cart_id}}\"\n        },\n        {\n          \"type\": \"button\",\n          \"text\": {\n            \"type\": \"plain_text\",\n            \"text\": \"\u274c Reject (Suggest Another)\"\n          },\n          \"style\": \"danger\",\n          \"value\": \"reject_{{$json.cart_id}}\"\n        }\n      ]\n    }\n  ]\n}",
+                "userId": "={{ $env.SLACK_CHANNEL_ID }}"
             },
             "id": "node-slack-suggest",
             "name": "Send Slack Suggestion",
