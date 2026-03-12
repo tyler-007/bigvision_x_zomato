@@ -25,7 +25,7 @@
         {
             "parameters": {
                 "method": "POST",
-                "url": "http://localhost:8100/decide",
+                "url": "http://127.0.0.1:8100/decide",
                 "options": {}
             },
             "id": "node-decide",
@@ -250,7 +250,7 @@
         {
             "parameters": {
                 "method": "POST",
-                "url": "http://localhost:8100/checkout",
+                "url": "http://127.0.0.1:8100/checkout",
                 "sendBody": true,
                 "specifyBody": "json",
                 "jsonBody": "={{ JSON.stringify({ cart_id: $json.cart_id }) }}",
@@ -384,7 +384,7 @@
         {
             "parameters": {
                 "method": "POST",
-                "url": "http://localhost:8100/reject",
+                "url": "http://127.0.0.1:8100/reject",
                 "sendBody": true,
                 "specifyBody": "json",
                 "jsonBody": "={{ JSON.stringify({ restaurant_name: $json.restaurant_name, item_name: $json.item_name, cart_id: $json.cart_id, net_total: $json.net_total, reason: $json.reason }) }}",
