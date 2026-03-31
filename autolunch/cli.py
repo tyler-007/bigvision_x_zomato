@@ -14,7 +14,7 @@ Usage:
   # Record a rejection (called by n8n on "No" webhook)
   python -m autolunch.cli reject --reason "Too heavy today"
 
-Output is JSON on stdout — n8n parses this to build the Telegram message.
+Output is JSON on stdout — n8n parses this to build the Slack message.
 """
 import asyncio
 import json
@@ -55,7 +55,7 @@ async def cmd_decide(dry_run: bool = False, constraints: list[str] | None = None
     try:
         result = await engine.decide(extra_constraints=constraints)
 
-        # Output: clean JSON that n8n reads to build the Telegram message
+        # Output: clean JSON that n8n reads to build the Slack message
         output = {
             "status": "ok",
             "restaurant_name": result.decision.restaurant_name,
@@ -74,7 +74,7 @@ async def cmd_decide(dry_run: bool = False, constraints: list[str] | None = None
             "delivery_minutes": result.restaurant.delivery_time_minutes,
             "rating": result.restaurant.rating,
             "review_count": result.restaurant.review_count,
-            "telegram_message": result.telegram_summary,
+            "slack_message": result.slack_summary,
         }
         print(json.dumps(output, indent=2))
         sys.exit(0)
@@ -84,7 +84,7 @@ async def cmd_decide(dry_run: bool = False, constraints: list[str] | None = None
             "status": "error",
             "error_type": "budget_retry_exceeded",
             "message": str(e),
-            "telegram_message": (
+            "slack_message": (
                 "⚠️ *AutoLunch Warning*\n\n"
                 "Couldn't find a suitable meal within ₹250 after multiple attempts.\n"
                 "Please order manually today."
@@ -98,7 +98,7 @@ async def cmd_decide(dry_run: bool = False, constraints: list[str] | None = None
             "status": "error",
             "error_type": "no_restaurants",
             "message": str(e),
-            "telegram_message": (
+            "slack_message": (
                 "⚠️ *AutoLunch Warning*\n\n"
                 "No restaurants found matching your filters near Miraya Rose right now.\n"
                 "Please order manually today."
@@ -112,7 +112,7 @@ async def cmd_decide(dry_run: bool = False, constraints: list[str] | None = None
             "status": "error",
             "error_type": type(e).__name__,
             "message": str(e),
-            "telegram_message": (
+            "slack_message": (
                 "⚠️ *AutoLunch Error*\n\n"
                 f"Something went wrong: {e.message}\n"
                 "Please order manually today."
@@ -124,7 +124,7 @@ async def cmd_decide(dry_run: bool = False, constraints: list[str] | None = None
 
 async def cmd_reject(restaurant_name: str, item_name: str, cart_id: str, net_total: float, reason: str) -> None:
     """
-    Record a user rejection. Called by n8n after user replies 'No' on Telegram.
+    Record a user rejection. Called by n8n after user replies 'No' on Slack.
     Returns JSON with the new suggestion (re-runs decide with rejection constraint).
     """
     from autolunch.models.restaurant import LLMOrderDecision, CartSimulationResult, Restaurant, MenuItem

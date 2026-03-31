@@ -89,27 +89,27 @@ async def test_rejection_flow() -> bool:
         return False
 
 
-async def test_telegram_message() -> bool:
-    """Test 3: Verify Telegram message format is complete and correct."""
-    console.print("\n[bold cyan]── Test 3: Telegram Message Format ──[/bold cyan]")
+async def test_slack_message() -> bool:
+    """Test 3: Verify Slack message format is complete and correct."""
+    console.print("\n[bold cyan]── Test 3: Slack Message Format ──[/bold cyan]")
     try:
         engine = LLMDecisionEngine()
         result = await engine.decide()
 
         console.print(Panel(
-            result.telegram_summary,
-            title="[bold]Telegram Preview[/bold]",
+            result.slack_summary,
+            title="[bold]Slack Preview[/bold]",
             border_style="blue",
         ))
 
         # Validate all key fields are present
-        assert result.decision.restaurant_name in result.telegram_summary
-        assert str(result.cart.net_total) in result.telegram_summary
-        assert "NET TOTAL" in result.telegram_summary
-        console.print("[green]✓ Telegram message format is complete[/green]")
+        assert result.decision.restaurant_name in result.slack_summary
+        assert str(result.cart.net_total) in result.slack_summary
+        assert "NET TOTAL" in result.slack_summary
+        console.print("[green]✓ Slack message format is complete[/green]")
         return True
     except Exception as e:
-        console.print(f"[red]✗ Telegram format FAILED: {e}[/red]")
+        console.print(f"[red]✗ Slack format FAILED: {e}[/red]")
         return False
 
 
@@ -123,7 +123,7 @@ async def main() -> None:
     results = {
         "Basic LLM Decision (Happy Path)": await test_basic_decision(),
         "Rejection Flow + Re-pick": await test_rejection_flow(),
-        "Telegram Message Format": await test_telegram_message(),
+        "Slack Message Format": await test_slack_message(),
     }
 
     console.print("\n[bold]── Summary ──[/bold]")

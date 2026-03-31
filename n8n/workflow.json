@@ -16,10 +16,7 @@
             "name": "12:45 PM Trigger (Mon-Fri)",
             "type": "n8n-nodes-base.scheduleTrigger",
             "typeVersion": 1.1,
-            "position": [
-                0,
-                0
-            ],
+            "position": [0, 0],
             "notes": "Fires at 12:45 PM every weekday. Food arrives ~1:30 PM."
         },
         {
@@ -32,24 +29,18 @@
             "name": "Run LLM Decision Engine",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
-            "position": [
-                200,
-                0
-            ],
+            "position": [200, 0],
             "notes": "Returns JSON: {status, restaurant_name, item_name, net_total, cart_id, ...}"
         },
         {
             "parameters": {
-                "jsCode": "// /decide returns JSON directly \u2014 no stdout parsing needed\nreturn [{ json: $input.first().json }];"
+                "jsCode": "// /decide returns JSON directly\nreturn [{ json: $input.first().json }];"
             },
             "id": "node-parse",
             "name": "Parse Decision JSON",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
-            "position": [
-                400,
-                0
-            ]
+            "position": [400, 0]
         },
         {
             "parameters": {
@@ -66,10 +57,7 @@
             "name": "Decision OK?",
             "type": "n8n-nodes-base.if",
             "typeVersion": 1,
-            "position": [
-                600,
-                0
-            ]
+            "position": [600, 0]
         },
         {
             "parameters": {
@@ -78,17 +66,14 @@
                 "customEndpoint": "chat.postMessage",
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "{\"channel\": \"={{ $parameter.userId }}\", \"text\": \"={{ '\\ud83c\\udf71 ' + $json.item_name + ' from ' + $json.restaurant_name + ' \\u2014 \\u20b9' + $json.net_total }}\", \"blocks\": [{\"type\": \"header\", \"text\": {\"type\": \"plain_text\", \"text\": \"\\ud83c\\udf71 AutoLunch \\u2014 Today's Suggestion\"}}, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"*{{$json.item_name}}*\\n{{$json.restaurant_name}}\\n\\n*Net Total:* \\u20b9{{$json.net_total}}\"}}, {\"type\": \"actions\", \"block_id\": \"lunch_decision\", \"elements\": [{\"type\": \"button\", \"text\": {\"type\": \"plain_text\", \"text\": \"\\u2705 Approve (Order It)\"}, \"style\": \"primary\", \"value\": \"approve_{{$json.cart_id}}\"}, {\"type\": \"button\", \"text\": {\"type\": \"plain_text\", \"text\": \"\\u274c Reject (Suggest Another)\"}, \"style\": \"danger\", \"value\": \"reject_{{$json.cart_id}}\"}]}]}",
+                "jsonBody": "={{ JSON.stringify({ channel: $env.SLACK_CHANNEL_ID, text: '\ud83c\udf71 ' + $json.item_name + ' from ' + $json.restaurant_name + ' \u2014 \u20b9' + $json.net_total, blocks: [{ type: 'header', text: { type: 'plain_text', text: '\ud83c\udf71 AutoLunch \u2014 Today\\'s Suggestion' } }, { type: 'section', fields: [{ type: 'mrkdwn', text: '*Item*\\n' + $json.item_name }, { type: 'mrkdwn', text: '*Restaurant*\\n' + $json.restaurant_name }, { type: 'mrkdwn', text: '*Rating*\\n' + $json.rating + '\u2b50 (' + $json.review_count + ' reviews)' }, { type: 'mrkdwn', text: '*Distance*\\n' + $json.distance_km + 'km \u00b7 ~' + $json.delivery_minutes + 'min' }] }, { type: 'divider' }, { type: 'section', fields: [{ type: 'mrkdwn', text: '*Base Price*\\n\u20b9' + $json.base_price }, { type: 'mrkdwn', text: '*Delivery*\\n\u20b9' + $json.delivery_fee + ' (Gold \ud83e\udd47)' }, { type: 'mrkdwn', text: '*Platform + GST*\\n\u20b9' + (+$json.platform_fee + +$json.gst).toFixed(2) }, { type: 'mrkdwn', text: '*NET TOTAL*\\n*\u20b9' + $json.net_total + '* \u2705' }] }, { type: 'context', elements: [{ type: 'mrkdwn', text: '\ud83e\udd16 _' + $json.reasoning + '_' }] }, { type: 'divider' }, { type: 'actions', block_id: 'lunch_decision', elements: [{ type: 'button', text: { type: 'plain_text', text: '\u2705 Yes, Order This!' }, style: 'primary', value: 'approve|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.restaurant_id + '|' + $json.item_name + '|' + $json.item_id + '|' + $json.base_price + '|' + $json.net_total, action_id: 'autolunch_approve' }, { type: 'button', text: { type: 'plain_text', text: '\u274c No, Suggest Again' }, style: 'danger', value: 'reject|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.restaurant_id + '|' + $json.item_name + '|' + $json.item_id + '|' + $json.base_price + '|' + $json.net_total, action_id: 'autolunch_reject' }] }] }) }}",
                 "userId": "={{ $env.SLACK_CHANNEL_ID }}"
             },
             "id": "node-slack-suggest",
             "name": "Send Slack Suggestion",
             "type": "n8n-nodes-base.slack",
             "typeVersion": 2.1,
-            "position": [
-                800,
-                -100
-            ]
+            "position": [800, -100]
         },
         {
             "parameters": {
@@ -101,10 +86,7 @@
             "name": "Slack Interaction Webhook",
             "type": "n8n-nodes-base.webhook",
             "typeVersion": 1.1,
-            "position": [
-                800,
-                200
-            ],
+            "position": [800, 200],
             "notes": "Set this URL in your Slack App \u2192 Interactivity \u2192 Request URL"
         },
         {
@@ -116,24 +98,18 @@
             "name": "Acknowledge Slack (200 OK)",
             "type": "n8n-nodes-base.respondToWebhook",
             "typeVersion": 1,
-            "position": [
-                1000,
-                200
-            ],
+            "position": [1000, 200],
             "notes": "Slack requires a 200 response within 3 seconds or it retries"
         },
         {
             "parameters": {
-                "jsCode": "const body = $input.first().json.body;\nconst payload = JSON.parse(decodeURIComponent(body.replace('payload=', '')));\nconst action = payload.actions[0];\nconst parts = action.value.split('|');\nreturn [{\n  json: {\n    action_type: parts[0],\n    cart_id: parts[1],\n    restaurant_name: parts[2],\n    item_name: parts[3],\n    net_total: parseFloat(parts[4]),\n    user_id: payload.user.id,\n    channel: payload.channel.id,\n    message_ts: payload.message.ts\n  }\n}];"
+                "jsCode": "const body = $input.first().json.body;\nlet payload;\nif (typeof body === 'string') {\n  payload = JSON.parse(decodeURIComponent(body.replace('payload=', '')));\n} else if (body.payload) {\n  payload = JSON.parse(body.payload);\n} else {\n  payload = body;\n}\nconst action = payload.actions[0];\nconst parts = action.value.split('|');\n// Format: action_type|cart_id|restaurant_name|restaurant_id|item_name|item_id|base_price|net_total\nreturn [{\n  json: {\n    action_type: parts[0],\n    cart_id: parts[1],\n    restaurant_name: parts[2] || '',\n    restaurant_id: parts[3] || '',\n    item_name: parts[4] || '',\n    item_id: parts[5] || '',\n    base_price: parseFloat(parts[6]) || 0,\n    net_total: parseFloat(parts[7]) || 0,\n    user_id: payload.user.id,\n    channel: payload.channel.id,\n    message_ts: payload.message.ts\n  }\n}];"
             },
             "id": "node-parse-action",
             "name": "Parse Slack Action",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
-            "position": [
-                1200,
-                200
-            ]
+            "position": [1200, 200]
         },
         {
             "parameters": {
@@ -150,10 +126,7 @@
             "name": "Approved or Rejected?",
             "type": "n8n-nodes-base.if",
             "typeVersion": 1,
-            "position": [
-                1400,
-                200
-            ]
+            "position": [1400, 200]
         },
         {
             "parameters": {
@@ -161,18 +134,15 @@
                 "url": "http://127.0.0.1:8100/checkout",
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({ cart_id: $json.cart_id }) }}",
+                "jsonBody": "={{ JSON.stringify({ cart_id: $json.cart_id, restaurant_name: $json.restaurant_name, restaurant_id: $json.restaurant_id, item_name: $json.item_name, item_id: $json.item_id, base_price: $json.base_price }) }}",
                 "options": {}
             },
             "id": "node-checkout",
             "name": "Trigger Zomato Checkout",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
-            "position": [
-                1600,
-                100
-            ],
-            "notes": "Calls Zomato MCP checkout \u2192 returns UPI payment link"
+            "position": [1600, 100],
+            "notes": "Calls Zomato MCP checkout \u2192 returns UPI payment link. Also logs order to memory."
         },
         {
             "parameters": {
@@ -182,27 +152,23 @@
             "name": "Parse Checkout Result",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
-            "position": [
-                1800,
-                100
-            ]
+            "position": [1800, 100]
         },
         {
             "parameters": {
-                "authentication": "oAuth2",
-                "resource": "message",
-                "operation": "post",
-                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
-                "text": "={{ '\ud83d\udcb3 *Pay Now \u2014 \u20b9' + $json.amount + '*\\n\\n*Order ID:* `' + $json.order_id + '`\\n*Delivery:* ~' + $json.estimated_delivery_minutes + ' minutes\\n\\n<' + $json.upi_payment_link + '|\ud83d\udc46 Tap here to pay via UPI>' }}"
+                "operation": "custom",
+                "customMethod": "POST",
+                "customEndpoint": "chat.postMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ channel: $env.SLACK_CHANNEL_ID, text: '\ud83d\udcb3 Pay Now \u2014 \u20b9' + $json.amount, blocks: [{ type: 'header', text: { type: 'plain_text', text: '\ud83d\udcb3 Complete Your Payment' } }, { type: 'section', text: { type: 'mrkdwn', text: '*Order ID:* `' + $json.order_id + '`\\n*Amount:* \u20b9' + $json.amount + '\\n*Estimated delivery:* ~' + $json.estimated_delivery_minutes + ' minutes\\n\\nTap the button below to pay via UPI:' }, accessory: { type: 'button', text: { type: 'plain_text', text: '\ud83d\udcb0 Pay Now via UPI' }, url: $json.upi_payment_link, style: 'primary', action_id: 'pay_upi' } }, { type: 'context', elements: [{ type: 'mrkdwn', text: '\ud83d\udd12 Secure UPI payment \u2014 your PIN is never shared with AutoLunch' }] }] }) }}",
+                "userId": "={{ $env.SLACK_CHANNEL_ID }}"
             },
             "id": "node-send-upi",
             "name": "Send UPI Payment Link",
             "type": "n8n-nodes-base.slack",
             "typeVersion": 2.1,
-            "position": [
-                2000,
-                100
-            ]
+            "position": [2000, 100]
         },
         {
             "parameters": {
@@ -212,10 +178,7 @@
             "name": "Count Today's Rejections",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
-            "position": [
-                1600,
-                300
-            ]
+            "position": [1600, 300]
         },
         {
             "parameters": {
@@ -233,61 +196,23 @@
             "name": "Max Rejections Hit?",
             "type": "n8n-nodes-base.if",
             "typeVersion": 1,
-            "position": [
-                1800,
-                300
-            ]
+            "position": [1800, 300]
         },
         {
             "parameters": {
-                "authentication": "oAuth2",
-                "resource": "message",
-                "operation": "post",
-                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
-                "text": "\u270b *AutoLunch: Order Manually Today*\n\nYou've passed on 2 suggestions. No problem \u2014 today's your call! Tap here to open Zomato: https://www.zomato.com/"
+                "operation": "custom",
+                "customMethod": "POST",
+                "customEndpoint": "chat.postMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ channel: $env.SLACK_CHANNEL_ID, text: '\u270b AutoLunch: Order Manually Today', blocks: [{ type: 'section', text: { type: 'mrkdwn', text: '\u270b *AutoLunch: Order Manually Today*\\n\\n_You\\'ve passed on 2 suggestions. No problem \u2014 today\\'s your call!_\\n\\nTap below to open Zomato:' }, accessory: { type: 'button', text: { type: 'plain_text', text: 'Open Zomato \ud83c\udf71' }, url: 'https://www.zomato.com/', action_id: 'open_zomato' } }] }) }}",
+                "userId": "={{ $env.SLACK_CHANNEL_ID }}"
             },
             "id": "node-manual-fallback",
             "name": "Send Manual Order Notice",
             "type": "n8n-nodes-base.slack",
             "typeVersion": 2.1,
-            "position": [
-                2000,
-                400
-            ]
-        },
-        {
-            "parameters": {
-                "authentication": "oAuth2",
-                "resource": "message",
-                "operation": "post",
-                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
-                "text": "Got it! \ud83d\udc4e Why didn't you want that? _(reply here \u2014 I'll remember it for next time)_"
-            },
-            "id": "node-ask-reason",
-            "name": "Ask Rejection Reason",
-            "type": "n8n-nodes-base.slack",
-            "typeVersion": 2.1,
-            "position": [
-                2000,
-                200
-            ]
-        },
-        {
-            "parameters": {
-                "httpMethod": "POST",
-                "path": "autolunch-reason",
-                "responseMode": "lastNode",
-                "options": {}
-            },
-            "id": "node-reason-webhook",
-            "name": "Rejection Reason Webhook",
-            "type": "n8n-nodes-base.webhook",
-            "typeVersion": 1.1,
-            "position": [
-                2200,
-                200
-            ],
-            "notes": "Triggered when user types their rejection reason in Slack"
+            "position": [2000, 400]
         },
         {
             "parameters": {
@@ -295,205 +220,148 @@
                 "url": "http://127.0.0.1:8100/reject",
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={{ JSON.stringify({ restaurant_name: $json.restaurant_name, item_name: $json.item_name, cart_id: $json.cart_id, net_total: $json.net_total, reason: $json.reason }) }}",
+                "jsonBody": "={{ JSON.stringify({ restaurant_name: $json.restaurant_name, item_name: $json.item_name, cart_id: $json.cart_id, net_total: $json.net_total, reason: 'User declined this suggestion' }) }}",
                 "options": {}
             },
             "id": "node-record-reject",
             "name": "Record Rejection + Re-decide",
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
-            "position": [
-                2400,
-                200
-            ],
-            "notes": "Saves rejection to memory + runs decision engine again with new constraint"
+            "position": [2000, 200],
+            "notes": "Saves rejection to memory + runs decision engine again \u2192 returns new suggestion JSON"
         },
         {
             "parameters": {
-                "authentication": "oAuth2",
-                "resource": "message",
-                "operation": "post",
-                "channel": "={{ $env.SLACK_CHANNEL_ID }}",
-                "text": "={{ '\u26a0\ufe0f *AutoLunch Error*\\n\\n' + $json.status_message + '\\n\\nPlease order manually today: https://www.zomato.com/' }}"
+                "jsCode": "// The /reject endpoint returns a new decision result directly\nreturn [{ json: $input.first().json }];"
+            },
+            "id": "node-parse-redecide",
+            "name": "Parse Re-decide Result",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [2200, 200]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "string": [
+                        {
+                            "value1": "={{ $json.status }}",
+                            "value2": "ok"
+                        }
+                    ]
+                }
+            },
+            "id": "node-redecide-ok",
+            "name": "Re-decide OK?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [2400, 200]
+        },
+        {
+            "parameters": {
+                "operation": "custom",
+                "customMethod": "POST",
+                "customEndpoint": "chat.postMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ channel: $env.SLACK_CHANNEL_ID, text: '\ud83c\udf71 ' + $json.item_name + ' from ' + $json.restaurant_name + ' \u2014 \u20b9' + $json.net_total, blocks: [{ type: 'header', text: { type: 'plain_text', text: '\ud83c\udf71 AutoLunch \u2014 New Suggestion' } }, { type: 'section', fields: [{ type: 'mrkdwn', text: '*Item*\\n' + $json.item_name }, { type: 'mrkdwn', text: '*Restaurant*\\n' + $json.restaurant_name }, { type: 'mrkdwn', text: '*Rating*\\n' + $json.rating + '\u2b50 (' + $json.review_count + ' reviews)' }, { type: 'mrkdwn', text: '*Distance*\\n' + $json.distance_km + 'km \u00b7 ~' + $json.delivery_minutes + 'min' }] }, { type: 'divider' }, { type: 'section', fields: [{ type: 'mrkdwn', text: '*Base Price*\\n\u20b9' + $json.base_price }, { type: 'mrkdwn', text: '*Delivery*\\n\u20b9' + $json.delivery_fee + ' (Gold \ud83e\udd47)' }, { type: 'mrkdwn', text: '*Platform + GST*\\n\u20b9' + (+$json.platform_fee + +$json.gst).toFixed(2) }, { type: 'mrkdwn', text: '*NET TOTAL*\\n*\u20b9' + $json.net_total + '* \u2705' }] }, { type: 'context', elements: [{ type: 'mrkdwn', text: '\ud83e\udd16 _' + $json.reasoning + '_' }] }, { type: 'divider' }, { type: 'actions', block_id: 'lunch_decision', elements: [{ type: 'button', text: { type: 'plain_text', text: '\u2705 Yes, Order This!' }, style: 'primary', value: 'approve|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.restaurant_id + '|' + $json.item_name + '|' + $json.item_id + '|' + $json.base_price + '|' + $json.net_total, action_id: 'autolunch_approve' }, { type: 'button', text: { type: 'plain_text', text: '\u274c No, Suggest Again' }, style: 'danger', value: 'reject|' + $json.cart_id + '|' + $json.restaurant_name + '|' + $json.restaurant_id + '|' + $json.item_name + '|' + $json.item_id + '|' + $json.base_price + '|' + $json.net_total, action_id: 'autolunch_reject' }] }] }) }}",
+                "userId": "={{ $env.SLACK_CHANNEL_ID }}"
+            },
+            "id": "node-slack-resuggest",
+            "name": "Send New Slack Suggestion",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.1,
+            "position": [2600, 100]
+        },
+        {
+            "parameters": {
+                "operation": "custom",
+                "customMethod": "POST",
+                "customEndpoint": "chat.postMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ channel: $env.SLACK_CHANNEL_ID, text: '\u26a0\ufe0f AutoLunch Error \u2014 ' + ($json.message || 'Something went wrong') + '. Please order manually today: https://www.zomato.com/' }) }}",
+                "userId": "={{ $env.SLACK_CHANNEL_ID }}"
             },
             "id": "node-error-alert",
             "name": "Send Error Alert",
             "type": "n8n-nodes-base.slack",
             "typeVersion": 2.1,
-            "position": [
-                800,
-                200
-            ]
+            "position": [800, 200]
+        },
+        {
+            "parameters": {
+                "operation": "custom",
+                "customMethod": "POST",
+                "customEndpoint": "chat.postMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ channel: $env.SLACK_CHANNEL_ID, text: '\u26a0\ufe0f AutoLunch could not find a new suggestion. Please order manually today: https://www.zomato.com/' }) }}",
+                "userId": "={{ $env.SLACK_CHANNEL_ID }}"
+            },
+            "id": "node-redecide-error",
+            "name": "Send Re-decide Error",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.1,
+            "position": [2600, 300]
         }
     ],
     "connections": {
         "12:45 PM Trigger (Mon-Fri)": {
-            "main": [
-                [
-                    {
-                        "node": "Run LLM Decision Engine",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+            "main": [[{ "node": "Run LLM Decision Engine", "type": "main", "index": 0 }]]
         },
         "Run LLM Decision Engine": {
-            "main": [
-                [
-                    {
-                        "node": "Parse Decision JSON",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+            "main": [[{ "node": "Parse Decision JSON", "type": "main", "index": 0 }]]
         },
         "Parse Decision JSON": {
-            "main": [
-                [
-                    {
-                        "node": "Decision OK?",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+            "main": [[{ "node": "Decision OK?", "type": "main", "index": 0 }]]
         },
         "Decision OK?": {
             "main": [
-                [
-                    {
-                        "node": "Send Slack Suggestion",
-                        "type": "main",
-                        "index": 0
-                    }
-                ],
-                [
-                    {
-                        "node": "Send Error Alert",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
+                [{ "node": "Send Slack Suggestion", "type": "main", "index": 0 }],
+                [{ "node": "Send Error Alert", "type": "main", "index": 0 }]
             ]
         },
         "Slack Interaction Webhook": {
-            "main": [
-                [
-                    {
-                        "node": "Acknowledge Slack (200 OK)",
-                        "type": "main",
-                        "index": 0
-                    },
-                    {
-                        "node": "Parse Slack Action",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+            "main": [[
+                { "node": "Acknowledge Slack (200 OK)", "type": "main", "index": 0 },
+                { "node": "Parse Slack Action", "type": "main", "index": 0 }
+            ]]
         },
         "Parse Slack Action": {
-            "main": [
-                [
-                    {
-                        "node": "Approved or Rejected?",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+            "main": [[{ "node": "Approved or Rejected?", "type": "main", "index": 0 }]]
         },
         "Approved or Rejected?": {
             "main": [
-                [
-                    {
-                        "node": "Trigger Zomato Checkout",
-                        "type": "main",
-                        "index": 0
-                    }
-                ],
-                [
-                    {
-                        "node": "Count Today's Rejections",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
+                [{ "node": "Trigger Zomato Checkout", "type": "main", "index": 0 }],
+                [{ "node": "Count Today's Rejections", "type": "main", "index": 0 }]
             ]
         },
         "Trigger Zomato Checkout": {
-            "main": [
-                [
-                    {
-                        "node": "Parse Checkout Result",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+            "main": [[{ "node": "Parse Checkout Result", "type": "main", "index": 0 }]]
         },
         "Parse Checkout Result": {
-            "main": [
-                [
-                    {
-                        "node": "Send UPI Payment Link",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+            "main": [[{ "node": "Send UPI Payment Link", "type": "main", "index": 0 }]]
         },
         "Count Today's Rejections": {
-            "main": [
-                [
-                    {
-                        "node": "Max Rejections Hit?",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+            "main": [[{ "node": "Max Rejections Hit?", "type": "main", "index": 0 }]]
         },
         "Max Rejections Hit?": {
             "main": [
-                [
-                    {
-                        "node": "Send Manual Order Notice",
-                        "type": "main",
-                        "index": 0
-                    }
-                ],
-                [
-                    {
-                        "node": "Ask Rejection Reason",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
+                [{ "node": "Send Manual Order Notice", "type": "main", "index": 0 }],
+                [{ "node": "Record Rejection + Re-decide", "type": "main", "index": 0 }]
             ]
         },
-        "Ask Rejection Reason": {
-            "main": [
-                [
-                    {
-                        "node": "Rejection Reason Webhook",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
-            ]
+        "Record Rejection + Re-decide": {
+            "main": [[{ "node": "Parse Re-decide Result", "type": "main", "index": 0 }]]
         },
-        "Rejection Reason Webhook": {
+        "Parse Re-decide Result": {
+            "main": [[{ "node": "Re-decide OK?", "type": "main", "index": 0 }]]
+        },
+        "Re-decide OK?": {
             "main": [
-                [
-                    {
-                        "node": "Record Rejection + Re-decide",
-                        "type": "main",
-                        "index": 0
-                    }
-                ]
+                [{ "node": "Send New Slack Suggestion", "type": "main", "index": 0 }],
+                [{ "node": "Send Re-decide Error", "type": "main", "index": 0 }]
             ]
         }
     },

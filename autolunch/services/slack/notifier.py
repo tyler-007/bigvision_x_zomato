@@ -43,6 +43,11 @@ class SlackNotifier:
     API_BASE = "https://slack.com/api"
 
     def __init__(self) -> None:
+        if settings.slack is None:
+            raise SlackError(
+                "Slack is not configured. Set SLACK_BOT_TOKEN, SLACK_CHANNEL_ID, "
+                "and SLACK_SIGNING_SECRET in your .env file.",
+            )
         self._token = settings.slack.bot_token
         self._channel = settings.slack.channel_id
         self._signing_secret = settings.slack.signing_secret

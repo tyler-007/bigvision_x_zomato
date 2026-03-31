@@ -20,8 +20,9 @@ Rejection flow (called from n8n on user "No"):
 """
 import asyncio
 import json
+from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 from loguru import logger
 from openai import AsyncOpenAI
@@ -34,7 +35,7 @@ from autolunch.core.exceptions import (
     MaxRetriesExceededError,
     ZomatoNoResultsError,
 )
-from autolunch.models.memory import AgentMemory, Rejection
+from autolunch.models.memory import AgentMemory, LearnedBlock, Rejection
 from autolunch.models.preferences import UserPreferences
 from autolunch.models.restaurant import (
     CartSimulationResult,
@@ -59,8 +60,8 @@ class DecisionResult:
     item: MenuItem
 
     @property
-    def telegram_summary(self) -> str:
-        """Pre-formatted message for the Telegram HITL approval notification."""
+    def slack_summary(self) -> str:
+        """Pre-formatted message for the Slack HITL approval notification."""
         return (
             f"🍱 *AutoLunch Suggestion*\n\n"
             f"*{self.decision.item_name}*\n"
@@ -76,6 +77,11 @@ class DecisionResult:
             f"🤖 _{self.decision.reasoning}_\n\n"
             f"Approve this order?"
         )
+
+    @property
+    def telegram_summary(self) -> str:
+        """Backward-compatible alias."""
+        return self.slack_summary
 
 
 class LLMDecisionEngine:
@@ -210,6 +216,9 @@ class LLMDecisionEngine:
         self._memory_repo.append_rejection(rejection)
         logger.info("Rejection recorded", reason=user_reason, constraint=extracted)
 
+        # Auto-derive learned blocks from repeated rejections
+        self._check_and_create_learned_blocks()
+
     # ── Private helpers ───────────────────────────────────────────────────────
 
     @retry(
@@ -280,6 +289,43 @@ class LLMDecisionEngine:
             temperature=0.2,
         )
         return response.choices[0].message.content.strip()
+
+    def _check_and_create_learned_blocks(self) -> None:
+        """
+        Auto-derive learned blocks when the same restaurant is rejected
+        2+ times within 7 days. Prevents the LLM from repeatedly suggesting
+        restaurants the user clearly dislikes.
+        """
+        memory = self._memory_repo.load()
+        recent = memory.recent_rejections(days=7)
+
+        # Count rejections per restaurant
+        restaurant_counts = Counter(r.suggested_restaurant for r in recent)
+
+        # Existing blocked entities (avoid duplicates)
+        already_blocked = {b.blocked_entity.lower() for b in memory.learned_blocks}
+
+        for restaurant, count in restaurant_counts.items():
+            if count >= 2 and restaurant.lower() not in already_blocked:
+                reasons = [
+                    r.user_reason for r in recent
+                    if r.suggested_restaurant == restaurant
+                ]
+                reason_summary = "; ".join(reasons[:3])
+
+                block = LearnedBlock(
+                    blocked_entity=restaurant,
+                    block_type="restaurant",
+                    reason_summary=f"Rejected {count}x in 7 days: {reason_summary}",
+                    created_on=date.today(),
+                    expires_on=date.today() + timedelta(days=30),
+                )
+                self._memory_repo.append_learned_block(block)
+                logger.info(
+                    "Auto-created learned block",
+                    restaurant=restaurant,
+                    rejections=count,
+                )
 
     @staticmethod
     def _resolve_pick(

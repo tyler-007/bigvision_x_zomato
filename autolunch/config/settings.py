@@ -57,14 +57,27 @@ class AppSettings(BaseSettings):
     max_hitl_rejections: int = Field(2, ge=1, le=5, description="Max user rejections before manual fallback")
 
     # Nested settings — loaded separately to keep env prefix scoping clean
+    # Core services (required for the decision engine to work)
     openrouter: OpenRouterSettings = Field(default_factory=OpenRouterSettings)
     zomato: ZomatoSettings = Field(default_factory=ZomatoSettings)
-    slack: SlackSettings = Field(default_factory=SlackSettings)
-    google: GoogleSettings = Field(default_factory=GoogleSettings)
+    # Optional services — app starts fine without these configured
+    slack: SlackSettings | None = Field(default=None)
+    google: GoogleSettings | None = Field(default=None)
 
     @model_validator(mode="after")
-    def ensure_data_dir(self) -> "AppSettings":
+    def _post_init(self) -> "AppSettings":
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        # Try to load optional service settings from env vars
+        if self.slack is None:
+            try:
+                self.slack = SlackSettings()
+            except Exception:
+                pass
+        if self.google is None:
+            try:
+                self.google = GoogleSettings()
+            except Exception:
+                pass
         return self
 
 

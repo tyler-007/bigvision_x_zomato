@@ -45,6 +45,12 @@ class RejectRequest(BaseModel):
 
 class CheckoutRequest(BaseModel):
     cart_id: str
+    # Order context for memory logging (sent by n8n from the decision result)
+    restaurant_name: str = ""
+    restaurant_id: str = ""
+    item_name: str = ""
+    item_id: str = ""
+    base_price: float = 0
 
 
 @app.get("/health")
@@ -130,12 +136,31 @@ async def reject(body: RejectRequest):
 
 @app.post("/checkout")
 async def checkout(body: CheckoutRequest):
-    """Trigger Zomato MCP checkout for a given cart ID."""
+    """Trigger Zomato MCP checkout for a given cart ID and log order to memory."""
     from autolunch.config.settings import settings
     from autolunch.services.zomato.client import ZomatoMCPClient
+    from autolunch.repositories import get_memory_repository
+    from autolunch.models.memory import PastOrder, OrderStatus
+    from datetime import date
 
     async with ZomatoMCPClient() as zomato:
         result = await zomato.checkout(body.cart_id)
+
+        # Record the order in memory so repeat-aversion works
+        if body.restaurant_name and body.item_name:
+            memory_repo = get_memory_repository(settings.data_dir)
+            memory_repo.append_order(PastOrder(
+                order_date=date.today(),
+                restaurant_name=body.restaurant_name,
+                restaurant_id=body.restaurant_id or "",
+                item_name=body.item_name,
+                item_id=body.item_id or "",
+                base_price=body.base_price or 0,
+                net_total=result.amount_payable,
+                status=OrderStatus.PLACED,
+            ))
+            logger.info("Order recorded to memory", restaurant=body.restaurant_name, item=body.item_name)
+
         return {
             "status": "ok",
             "order_id": result.order_id,

@@ -3,7 +3,7 @@
 # These are called by n8n's Execute Command nodes to avoid shell escaping issues.
 
 set -e
-PROJECT="/Users/aayushjain/codes/projects/personal projects/bigivision_x_zomato"
+PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT"
 source .venv/bin/activate
 

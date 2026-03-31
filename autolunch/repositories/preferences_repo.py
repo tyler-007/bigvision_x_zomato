@@ -27,7 +27,7 @@ class PreferencesRepository(BaseRepository[UserPreferences]):
         if not self._file_path.exists():
             raise ConfigurationError(
                 f"Preferences file not found: {self._file_path}. "
-                "Please run `autolunch setup` to create it.",
+                "Please copy data/preferences.json from the example and edit your settings.",
                 context={"path": str(self._file_path)},
             )
 

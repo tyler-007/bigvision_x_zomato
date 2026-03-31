@@ -1,6 +1,6 @@
 # 🍱 AutoLunch
 
-> Autonomous Zomato lunch ordering agent — triggers at 12:45 PM Mon–Fri, picks a meal using AI, gets your Telegram approval, and logs the receipt to Google Sheets. All within ₹250 net total.
+> Autonomous Zomato lunch ordering agent — triggers at 12:45 PM Mon–Fri, picks a meal using AI, gets your Slack approval, and logs the receipt to Google Sheets. All within ₹250 net total.
 
 **Location:** Miraya Rose, Bangalore — `12.9572°N, 77.7322°E`  
 **Delivery radius:** ≤ 7km (Zomato Gold free delivery)  
@@ -17,15 +17,18 @@ autolunch/
 ├── models/         # Pydantic data models (UserPreferences, AgentMemory, Restaurant, etc.)
 ├── repositories/   # Repository pattern — JSON ↔ Pydantic (swap to DB without touching services)
 └── services/
-    └── zomato/     # Async Zomato MCP client + mock server for testing
+    ├── zomato/     # Async Zomato MCP client + mock server for testing
+    ├── llm/        # OpenRouter LLM decision engine + prompt templates
+    └── slack/      # Slack Block Kit notifier with interactive Yes/No buttons
 data/
 ├── preferences.json  # Your 10 preference answers (diet, spice, cuisines, guardrails)
 └── memory.json       # Episodic memory (past orders, rejections, learned blocks)
 n8n/
 └── workflow.json     # Importable n8n workflow (Milestone 4)
 scripts/
-├── test_openrouter.py     # Milestone 1 validator
-└── test_zomato_client.py  # Milestone 2 validator
+├── test_openrouter.py        # Milestone 1 validator
+├── test_zomato_client.py     # Milestone 2 validator
+└── test_decision_engine.py   # Milestone 3 validator
 ```
 
 ---
@@ -47,8 +50,8 @@ After LLM picks an item → **cart simulation** checks real net total (incl. GST
 |---|-----------|--------|
 | 1 | Project Foundation (settings, models, repositories, logging) | ✅ Done |
 | 2 | Zomato MCP Client (search, menu, cart sim, checkout) | ✅ Done |
-| 3 | LLM Decision Engine (OpenRouter prompt chain) | 🔄 Next |
-| 4 | n8n Workflow + Telegram HITL | ⏳ |
+| 3 | LLM Decision Engine (OpenRouter prompt chain) | ✅ Done |
+| 4 | n8n Workflow + Slack HITL (Block Kit buttons, approval/rejection loop) | ✅ Done |
 | 5 | Receipt (Gmail) + Google Sheets logging | ⏳ |
 | 6 | End-to-end testing | ⏳ |
 
@@ -67,7 +70,7 @@ pip install fastapi uvicorn  # for mock server
 ### 2. Configure environment
 ```bash
 cp .env.example .env
-# Fill in: OPENROUTER_API_KEY, ZOMATO_AUTH_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+# Fill in: OPENROUTER_API_KEY, ZOMATO_AUTH_TOKEN, SLACK_BOT_TOKEN, SLACK_CHANNEL_ID
 # Coordinates are pre-set to Miraya Rose, Bangalore
 ```
 
@@ -96,6 +99,22 @@ The Zomato MCP server requires OAuth authentication to your Zomato account to:
 - Initiate checkout and generate the UPI payment link
 
 This is a **one-time setup** during Milestone 4 (n8n configuration). You'll log in via Zomato's OAuth flow and the token gets saved in `.env` as `ZOMATO_AUTH_TOKEN`. No credentials are stored in code — only in your local `.env` file (gitignored).
+
+---
+
+## Slack HITL (Human-in-the-Loop)
+
+The agent sends interactive Block Kit messages to your Slack DM with **Approve / Reject** buttons:
+- **Approve** → triggers Zomato checkout, sends UPI payment link
+- **Reject** → records rejection to memory, re-runs decision engine, sends new suggestion
+- After **2 rejections** → "order manually" fallback with Zomato link
+
+Setup:
+1. Create a Slack App at https://api.slack.com/apps
+2. Add Bot Token Scopes: `chat:write`, `im:write`, `im:history`
+3. Enable Interactivity → set Request URL to your n8n webhook (`/autolunch-hitl`)
+4. Install to workspace → copy Bot Token to `.env` as `SLACK_BOT_TOKEN`
+5. Get your DM Channel ID → set as `SLACK_CHANNEL_ID` in `.env`
 
 ---
 
