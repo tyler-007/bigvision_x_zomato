@@ -2,7 +2,11 @@
 AutoLunch — Pydantic Data Models: User Preferences
 This is the "brain" of the system — loaded fresh on every workflow run.
 """
-from enum import StrEnum
+try:
+    from enum import StrEnum
+except ImportError:
+    from enum import Enum
+    class StrEnum(str, Enum): pass
 from pydantic import BaseModel, Field
 
 

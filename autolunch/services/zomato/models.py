@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 AutoLunch — Zomato MCP API Models
 

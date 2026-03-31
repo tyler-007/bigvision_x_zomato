@@ -1,9 +1,12 @@
+from __future__ import annotations
 """
 AutoLunch — Application Settings
 Loaded from .env file via Pydantic BaseSettings.
 All config is centralized here — no magic strings scattered across modules.
 """
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()  # Must run before any BaseSettings class is instantiated
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -56,28 +59,28 @@ class AppSettings(BaseSettings):
     max_llm_retry_attempts: int = Field(3, ge=1, le=5, description="Max LLM re-picks on budget overage")
     max_hitl_rejections: int = Field(2, ge=1, le=5, description="Max user rejections before manual fallback")
 
-    # Nested settings — loaded separately to keep env prefix scoping clean
-    # Core services (required for the decision engine to work)
-    openrouter: OpenRouterSettings = Field(default_factory=OpenRouterSettings)
-    zomato: ZomatoSettings = Field(default_factory=ZomatoSettings)
-    # Optional services — app starts fine without these configured
+    # Nested settings — all optional at startup, validated when actually used.
+    # This lets the app start even if only some services are configured.
+    openrouter: OpenRouterSettings | None = Field(default=None)
+    zomato: ZomatoSettings | None = Field(default=None)
     slack: SlackSettings | None = Field(default=None)
     google: GoogleSettings | None = Field(default=None)
 
     @model_validator(mode="after")
-    def _post_init(self) -> "AppSettings":
+    def _post_init(self) -> AppSettings:
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        # Try to load optional service settings from env vars
-        if self.slack is None:
-            try:
-                self.slack = SlackSettings()
-            except Exception:
-                pass
-        if self.google is None:
-            try:
-                self.google = GoogleSettings()
-            except Exception:
-                pass
+        # Try to load each service's settings from env vars
+        for attr, cls in [
+            ("openrouter", OpenRouterSettings),
+            ("zomato", ZomatoSettings),
+            ("slack", SlackSettings),
+            ("google", GoogleSettings),
+        ]:
+            if getattr(self, attr) is None:
+                try:
+                    setattr(self, attr, cls())
+                except Exception:
+                    pass
         return self
 
 

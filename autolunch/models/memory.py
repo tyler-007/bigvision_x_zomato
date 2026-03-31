@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 AutoLunch — Pydantic Data Models: Episodic Memory
 
@@ -7,7 +8,11 @@ The memory file acts as the agent's long-term memory:
 - Learned blocks (cumulative patterns the LLM should internalize)
 """
 from datetime import date
-from enum import StrEnum
+try:
+    from enum import StrEnum
+except ImportError:
+    from enum import Enum
+    class StrEnum(str, Enum): pass
 from pydantic import BaseModel, Field
 
 

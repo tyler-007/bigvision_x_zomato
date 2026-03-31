@@ -7,7 +7,7 @@ name = "autolunch"
 version = "1.0.0"
 description = "Autonomous Zomato lunch ordering agent with LLM decision engine"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     # Core LLM / AI
     "openai>=1.30.0",           # OpenRouter uses OpenAI-compatible SDK
@@ -45,7 +45,7 @@ autolunch = "autolunch.cli:main"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

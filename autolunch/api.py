@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 AutoLunch — Local HTTP API Server
 
