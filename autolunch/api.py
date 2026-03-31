@@ -139,12 +139,12 @@ async def reject(body: RejectRequest):
 async def checkout(body: CheckoutRequest):
     """Trigger Zomato MCP checkout for a given cart ID and log order to memory."""
     from autolunch.config.settings import settings
-    from autolunch.services.zomato.client import ZomatoMCPClient
+    from autolunch.services.zomato import get_zomato_client
     from autolunch.repositories import get_memory_repository
     from autolunch.models.memory import PastOrder, OrderStatus
     from datetime import date
 
-    async with ZomatoMCPClient() as zomato:
+    async with get_zomato_client() as zomato:
         result = await zomato.checkout(body.cart_id)
 
         # Record the order in memory so repeat-aversion works

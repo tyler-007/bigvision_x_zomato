@@ -46,7 +46,7 @@ from autolunch.models.restaurant import (
 )
 from autolunch.repositories import get_memory_repository, get_preferences_repository
 from autolunch.services.llm.prompts import build_system_prompt, build_user_prompt
-from autolunch.services.zomato.client import ZomatoMCPClient
+from autolunch.services.zomato import get_zomato_client
 
 
 @dataclass
@@ -123,7 +123,7 @@ class LLMDecisionEngine:
         prefs = self._prefs_repo.load()
         memory = self._memory_repo.load()
 
-        async with ZomatoMCPClient() as zomato:
+        async with get_zomato_client() as zomato:
             # Step 1: Get filtered restaurants
             restaurants = await zomato.search_restaurants(prefs)
 
