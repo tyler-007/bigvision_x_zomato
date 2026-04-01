@@ -339,16 +339,17 @@ async def _handle_approve(cart_id: str, restaurant_name: str, restaurant_id: str
         upi_link = data.get("upi_payment_link", "https://www.zomato.com/")
 
         if order_id.startswith("pending_"):
-            # Checkout couldn't complete — cart is created, user should pay in Zomato app
+            # Checkout couldn't complete — cart is created, user pays via shareable link
+            cart_link = upi_link  # This is the shareable_link from Zomato
             blocks = [
-                {"type": "header", "text": {"type": "plain_text", "text": "🍱 Order Ready — Complete in Zomato"}},
+                {"type": "header", "text": {"type": "plain_text", "text": "🍱 Cart Ready — Tap to Pay!"}},
                 {"type": "section", "text": {"type": "mrkdwn",
-                    "text": f"Your cart is ready on Zomato! Open the app to review and pay.\n\n"
-                            f"_The cart was created automatically with the best available promo._"},
-                 "accessory": {"type": "button", "text": {"type": "plain_text", "text": "Open Zomato 🍱"},
-                               "url": "https://www.zomato.com/", "style": "primary", "action_id": "open_zomato"}},
+                    "text": f"Your cart is ready with the best promo applied!\n\n"
+                            f"Tap the button to open your cart in Zomato and complete payment:"},
+                 "accessory": {"type": "button", "text": {"type": "plain_text", "text": "🛒 Open My Cart"},
+                               "url": cart_link, "style": "primary", "action_id": "open_cart"}},
             ]
-            await _send_slack_message("🍱 Cart ready — open Zomato to complete your order!", blocks)
+            await _send_slack_message(f"🍱 Cart ready — tap to open in Zomato!", blocks)
         else:
             blocks = [
                 {"type": "header", "text": {"type": "plain_text", "text": "💳 Complete Your Payment"}},

@@ -334,12 +334,18 @@ class RealZomatoMCPClient:
             final_amount = cart_data.get("final_amount")
             promo = cart_data.get("promo_code")
             promo_discount = float(cart_data.get("promo_discount_amount", 0))
+            shareable_link = cart_data.get("shareable_link", "")
             if final_amount is not None:
                 net_total = round(float(final_amount), 2)
                 if promo:
                     logger.info(f"Promo auto-applied: {promo} (-₹{promo_discount})")
             else:
                 net_total = round(base_price + delivery_fee + platform_fee + gst, 2)
+
+            # Store shareable link for the checkout response
+            self._last_shareable_link = shareable_link
+            self._last_promo = promo or ""
+            self._last_promo_discount = promo_discount
 
         except Exception as e:
             logger.warning(f"Cart creation failed, estimating: {e}")
@@ -381,10 +387,11 @@ class RealZomatoMCPClient:
         error_text = raw.get("raw_text", "") if isinstance(raw, dict) else str(raw)
         if "Error" in error_text:
             logger.warning(f"Zomato checkout returned error: {error_text}")
-            # Return a result that tells the user to complete in-app
+            # Use shareable link so user can complete in Zomato app with their cart
+            link = getattr(self, "_last_shareable_link", "") or "https://www.zomato.com/"
             return CheckoutResult(
                 order_id=f"pending_{cart_id[:8]}",
-                upi_payment_link=f"https://www.zomato.com/",
+                upi_payment_link=link,
                 upi_qr_code_url=None,
                 amount_payable=0,
                 estimated_delivery_minutes=30,
