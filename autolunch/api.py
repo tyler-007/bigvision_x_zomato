@@ -45,8 +45,8 @@ app = FastAPI(title="AutoLunch API", version="1.0")
 _daily_state: dict = {"date": "", "rejections": 0}
 MAX_REJECTIONS = 2
 
-# Cache cart_id → shareable_link (so approve flow can use it)
-_cart_links: dict[str, str] = {}
+# Cache cart_id → cart details (so approve flow can use shareable_link + promo info)
+_cart_cache: dict[str, dict] = {}
 
 
 class RejectRequest(BaseModel):
@@ -72,15 +72,86 @@ async def health():
     return {"status": "ok", "service": "autolunch-api"}
 
 
+@app.get("/history")
+async def order_history(limit: int = 10, source: str = "all"):
+    """
+    Get order history from multiple sources.
+    source: 'all' | 'zomato' | 'sheet' | 'memory'
+    """
+    results = []
+
+    # Zomato real order history (includes personal orders)
+    if source in ("all", "zomato"):
+        try:
+            from autolunch.services.zomato.real_mcp_client import RealZomatoMCPClient, TOKEN_FILE
+            if TOKEN_FILE.exists():
+                async with RealZomatoMCPClient() as client:
+                    raw = await client._call("get_order_history", {
+                        "address_id": "877033185",
+                    })
+                    orders = raw.get("orders", []) if isinstance(raw, dict) else []
+                    for o in orders[:limit]:
+                        results.append({
+                            "source": "zomato",
+                            "date": o.get("date", o.get("created_at", "")),
+                            "restaurant": o.get("restaurant_name", o.get("restaurant", {}).get("name", "")),
+                            "items": o.get("items", o.get("order_items", [])),
+                            "total": o.get("total", o.get("amount", 0)),
+                            "status": o.get("status", ""),
+                            "order_id": o.get("order_id", o.get("id", "")),
+                        })
+        except Exception as e:
+            logger.debug(f"Zomato history failed: {e}")
+
+    # Google Sheets history
+    if source in ("all", "sheet"):
+        try:
+            from autolunch.services.sheets.logger import get_sheets_logger
+            sheets = get_sheets_logger()
+            if sheets:
+                rows = sheets.get_recent_orders(limit)
+                for r in rows:
+                    results.append({"source": "sheet", **r})
+        except Exception as e:
+            logger.debug(f"Sheets history failed: {e}")
+
+    # Local memory
+    if source in ("all", "memory"):
+        try:
+            from autolunch.config.settings import settings
+            from autolunch.repositories import get_memory_repository
+            mem = get_memory_repository(settings.data_dir).load()
+            for o in mem.past_orders[-limit:]:
+                results.append({
+                    "source": "memory",
+                    "date": str(o.order_date),
+                    "restaurant": o.restaurant_name,
+                    "items": o.item_name,
+                    "total": o.net_total,
+                    "status": str(o.status),
+                })
+        except Exception as e:
+            logger.debug(f"Memory history failed: {e}")
+
+    return {"orders": results, "count": len(results)}
+
+
 @app.post("/decide")
 async def decide(constraints: list[str] | None = None):
     """Run LLM decision engine → return validated lunch pick."""
     engine = LLMDecisionEngine()
     try:
         result = await engine.decide(extra_constraints=constraints)
-        # Cache shareable link for the approve flow
-        if result.cart.shareable_link:
-            _cart_links[result.cart.cart_id] = result.cart.shareable_link
+        # Cache cart details for the approve flow (shareable link, promo, pricing)
+        _cart_cache[result.cart.cart_id] = {
+            "shareable_link": result.cart.shareable_link,
+            "promo_code": result.cart.promo_code,
+            "promo_discount": result.cart.promo_discount,
+            "net_total": result.cart.net_total,
+            "delivery_fee": result.cart.delivery_fee,
+            "platform_fee": result.cart.platform_fee,
+            "gst": result.cart.gst,
+        }
         return {
             "status": "ok",
             "restaurant_name": result.decision.restaurant_name,
@@ -205,7 +276,7 @@ async def _send_slack_suggestion(decision_data: dict) -> None:
         {"type": "section", "fields": [
             {"type": "mrkdwn", "text": f"*Item*\n{d['item_name']}"},
             {"type": "mrkdwn", "text": f"*Restaurant*\n{d['restaurant_name']}"},
-            {"type": "mrkdwn", "text": f"*Rating*\n{d['rating']}⭐ ({d['review_count']:,} reviews)"},
+            {"type": "mrkdwn", "text": f"*Rating*\n{d['rating']}⭐ ({int(d.get('review_count', 0)):,} reviews)"},
             {"type": "mrkdwn", "text": f"*Distance*\n{d['distance_km']}km · ~{d['delivery_minutes']}min"},
         ]},
         {"type": "divider"},
@@ -258,13 +329,17 @@ async def _send_slack_message(text: str, blocks: list | None = None) -> None:
 @app.post("/trigger")
 async def trigger():
     """Manually trigger the full flow: decide → send to Slack."""
-    result = await decide()
-    if isinstance(result, JSONResponse):
+    try:
+        result = await decide()
+        if isinstance(result, JSONResponse):
+            return result
+        if result.get("status") == "ok":
+            await _send_slack_suggestion(result)
+            return {"status": "ok", "message": "Suggestion sent to Slack", **result}
         return result
-    if result.get("status") == "ok":
-        await _send_slack_suggestion(result)
-        return {"status": "ok", "message": "Suggestion sent to Slack", **result}
-    return result
+    except Exception as e:
+        logger.error(f"Trigger failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 @app.post("/slack/interact")
@@ -329,10 +404,32 @@ async def slack_interact(request: Request):
 
 
 async def _handle_approve(cart_id: str, restaurant_name: str, restaurant_id: str, item_name: str, item_id: str, base_price: float) -> None:
-    """Process approval: send cart link to Slack so user can pay in Zomato app."""
+    """Process approval: log to Sheet, send cart link to Slack."""
     try:
-        # Use the cached shareable link (set during /decide)
-        cart_link = _cart_links.get(cart_id, "")
+        # Get cached cart details (shareable link, promo, pricing)
+        cart_info = _cart_cache.get(cart_id, {})
+        cart_link = cart_info.get("shareable_link", "")
+
+        # Log to Google Sheets
+        try:
+            from autolunch.services.sheets.logger import get_sheets_logger
+            sheets = get_sheets_logger()
+            if sheets:
+                sheets.log_order(
+                    restaurant_name=restaurant_name,
+                    item_name=item_name,
+                    base_price=base_price,
+                    promo_code=cart_info.get("promo_code", ""),
+                    promo_discount=cart_info.get("promo_discount", 0),
+                    delivery_fee=cart_info.get("delivery_fee", 0),
+                    platform_fee=cart_info.get("platform_fee", 0),
+                    gst=cart_info.get("gst", 0),
+                    net_total=cart_info.get("net_total", base_price),
+                    cart_id=cart_id,
+                    status="approved",
+                )
+        except Exception as e:
+            logger.warning(f"Sheets logging failed (non-blocking): {e}")
 
         if not cart_link:
             # Try checkout as fallback

@@ -333,8 +333,8 @@ class RealZomatoMCPClient:
             # Use Zomato's final_amount if available (includes auto-applied promos)
             final_amount = cart_data.get("final_amount")
             promo = cart_data.get("promo_code")
-            promo_discount = float(cart_data.get("promo_discount_amount", 0))
-            shareable_link = cart_data.get("shareable_link", "")
+            promo_discount = float(cart_data.get("promo_discount_amount") or 0)
+            shareable_link = cart_data.get("shareable_link") or ""
             if final_amount is not None:
                 net_total = round(float(final_amount), 2)
                 if promo:
@@ -355,6 +355,9 @@ class RealZomatoMCPClient:
             gst = round(item.base_price * 0.05, 2)
             net_total = round(item.base_price + delivery_fee + platform_fee + gst, 2)
             base_price = item.base_price
+            _shareable = ""
+            _promo = ""
+            _promo_disc = 0.0
 
         within_budget = net_total <= budget
         result = CartSimulationResult(
