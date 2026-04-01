@@ -2,9 +2,11 @@ from __future__ import annotations
 """
 AutoLunch — Local HTTP API Server
 
-n8n v2 removed the executeCommand node for security reasons.
-This FastAPI server acts as a local bridge — n8n calls it via
-HTTP Request nodes instead of shell commands.
+Self-contained server handling:
+  - LLM decision engine
+  - Slack HITL (interactive buttons for approve/reject)
+  - Zomato checkout
+  - Full approval/rejection loop
 
 Runs on: http://localhost:8100
 Start: source .venv/bin/activate && uvicorn autolunch.api:app --port 8100
@@ -13,11 +15,15 @@ Endpoints:
   POST /decide           → Run LLM decision engine
   POST /checkout         → Trigger Zomato checkout
   POST /reject           → Record rejection + re-decide
+  POST /slack/interact   → Slack interactive button handler
+  POST /trigger          → Manually trigger the full flow (decide → Slack)
   GET  /health           → Health check
 """
 import asyncio
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+import json
+from urllib.parse import parse_qs, unquote
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from loguru import logger
 from dotenv import load_dotenv
@@ -34,6 +40,10 @@ from autolunch.services.llm.engine import LLMDecisionEngine
 
 setup_logging()
 app = FastAPI(title="AutoLunch API", version="1.0")
+
+# Track rejection count per day (in-memory, resets on restart)
+_daily_state: dict = {"date": "", "rejections": 0}
+MAX_REJECTIONS = 2
 
 
 class RejectRequest(BaseModel):
@@ -170,3 +180,194 @@ async def checkout(body: CheckoutRequest):
             "amount": result.amount_payable,
             "estimated_delivery_minutes": result.estimated_delivery_minutes,
         }
+
+
+# ── Slack HITL Endpoints ─────────────────────────────────────────────────────
+
+async def _send_slack_suggestion(decision_data: dict) -> None:
+    """Send a Block Kit suggestion to Slack with Approve/Reject buttons."""
+    import httpx
+    from autolunch.config.settings import settings
+    if not settings.slack:
+        logger.warning("Slack not configured, skipping message")
+        return
+
+    d = decision_data
+    net = round(d['net_total'], 2)
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": "🍱 AutoLunch — Today's Suggestion"}},
+        {"type": "section", "fields": [
+            {"type": "mrkdwn", "text": f"*Item*\n{d['item_name']}"},
+            {"type": "mrkdwn", "text": f"*Restaurant*\n{d['restaurant_name']}"},
+            {"type": "mrkdwn", "text": f"*Rating*\n{d['rating']}⭐ ({d['review_count']:,} reviews)"},
+            {"type": "mrkdwn", "text": f"*Distance*\n{d['distance_km']}km · ~{d['delivery_minutes']}min"},
+        ]},
+        {"type": "divider"},
+        {"type": "section", "fields": [
+            {"type": "mrkdwn", "text": f"*Base Price*\n₹{d['base_price']:.2f}"},
+            {"type": "mrkdwn", "text": f"*Delivery*\n₹{d['delivery_fee']:.2f}"},
+            {"type": "mrkdwn", "text": f"*Platform + GST*\n₹{d['platform_fee'] + d['gst']:.2f}"},
+            {"type": "mrkdwn", "text": f"*NET TOTAL*\n*₹{net:.2f}* ✅"},
+        ]},
+        {"type": "context", "elements": [
+            {"type": "mrkdwn", "text": f"🤖 _{d['reasoning']}_"}
+        ]},
+        {"type": "divider"},
+        {"type": "actions", "block_id": "lunch_decision", "elements": [
+            {"type": "button", "text": {"type": "plain_text", "text": "✅ Yes, Order This!"},
+             "style": "primary",
+             "value": f"approve|{d['cart_id']}|{d['restaurant_name']}|{d['restaurant_id']}|{d['item_name']}|{d['item_id']}|{d['base_price']}|{d['net_total']}",
+             "action_id": "autolunch_approve"},
+            {"type": "button", "text": {"type": "plain_text", "text": "❌ No, Suggest Again"},
+             "style": "danger",
+             "value": f"reject|{d['cart_id']}|{d['restaurant_name']}|{d['restaurant_id']}|{d['item_name']}|{d['item_id']}|{d['base_price']}|{d['net_total']}",
+             "action_id": "autolunch_reject"},
+        ]}
+    ]
+
+    async with httpx.AsyncClient() as client:
+        r = await client.post("https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack.bot_token}", "Content-Type": "application/json"},
+            json={"channel": settings.slack.channel_id, "blocks": blocks,
+                  "text": f"🍱 {d['item_name']} from {d['restaurant_name']} — ₹{net:.2f}"})
+        result = r.json()
+        if result.get("ok"):
+            logger.info("Slack suggestion sent", ts=result["ts"])
+        else:
+            logger.error("Slack send failed", error=result.get("error"))
+
+
+async def _send_slack_message(text: str, blocks: list | None = None) -> None:
+    """Send a simple message to the Slack channel."""
+    import httpx
+    from autolunch.config.settings import settings
+    if not settings.slack:
+        return
+    async with httpx.AsyncClient() as client:
+        await client.post("https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack.bot_token}", "Content-Type": "application/json"},
+            json={"channel": settings.slack.channel_id, "text": text, **({"blocks": blocks} if blocks else {})})
+
+
+@app.post("/trigger")
+async def trigger():
+    """Manually trigger the full flow: decide → send to Slack."""
+    result = await decide()
+    if isinstance(result, JSONResponse):
+        return result
+    if result.get("status") == "ok":
+        await _send_slack_suggestion(result)
+        return {"status": "ok", "message": "Suggestion sent to Slack", **result}
+    return result
+
+
+@app.post("/slack/interact")
+async def slack_interact(request: Request):
+    """
+    Handle Slack interactive button clicks (Approve/Reject).
+    Slack posts form-encoded payload to this endpoint.
+    Set this URL in Slack App → Interactivity → Request URL.
+    """
+    from datetime import date
+
+    # Slack sends form-encoded body with 'payload' field containing JSON
+    body = await request.body()
+    body_str = body.decode()
+    if body_str.startswith("payload="):
+        payload_str = unquote(body_str.replace("payload=", "", 1))
+        payload = json.loads(payload_str)
+    else:
+        payload = json.loads(body_str)
+
+    action = payload["actions"][0]
+    parts = action["value"].split("|")
+    # Format: action_type|cart_id|restaurant_name|restaurant_id|item_name|item_id|base_price|net_total
+    action_type = parts[0]
+    cart_id = parts[1] if len(parts) > 1 else ""
+    restaurant_name = parts[2] if len(parts) > 2 else ""
+    restaurant_id = parts[3] if len(parts) > 3 else ""
+    item_name = parts[4] if len(parts) > 4 else ""
+    item_id = parts[5] if len(parts) > 5 else ""
+    base_price = float(parts[6]) if len(parts) > 6 else 0
+    net_total = float(parts[7]) if len(parts) > 7 else 0
+
+    logger.info(f"Slack action: {action_type}", item=item_name, restaurant=restaurant_name)
+
+    # Track daily rejections
+    today = date.today().isoformat()
+    if _daily_state["date"] != today:
+        _daily_state["date"] = today
+        _daily_state["rejections"] = 0
+
+    if action_type == "approve":
+        # Checkout and send UPI link
+        asyncio.create_task(_handle_approve(cart_id, restaurant_name, restaurant_id, item_name, item_id, base_price))
+        return Response(status_code=200)
+
+    elif action_type == "reject":
+        _daily_state["rejections"] += 1
+
+        if _daily_state["rejections"] >= MAX_REJECTIONS:
+            asyncio.create_task(_send_slack_message(
+                "✋ *AutoLunch: Order Manually Today*\n\n"
+                "You've passed on 2 suggestions. No problem — today's your call!\n"
+                "Tap here to open Zomato: https://www.zomato.com/"
+            ))
+            return Response(status_code=200)
+
+        # Reject and re-suggest
+        asyncio.create_task(_handle_reject(restaurant_name, item_name, cart_id, net_total))
+        return Response(status_code=200)
+
+    return Response(status_code=200)
+
+
+async def _handle_approve(cart_id: str, restaurant_name: str, restaurant_id: str, item_name: str, item_id: str, base_price: float) -> None:
+    """Process approval: checkout + send UPI link to Slack."""
+    try:
+        result = await checkout(CheckoutRequest(
+            cart_id=cart_id, restaurant_name=restaurant_name,
+            restaurant_id=restaurant_id, item_name=item_name,
+            item_id=item_id, base_price=base_price,
+        ))
+        data = result if isinstance(result, dict) else result.body
+        if isinstance(data, bytes):
+            data = json.loads(data)
+
+        blocks = [
+            {"type": "header", "text": {"type": "plain_text", "text": "💳 Complete Your Payment"}},
+            {"type": "section", "text": {"type": "mrkdwn",
+                "text": f"*Order ID:* `{data.get('order_id', 'N/A')}`\n"
+                        f"*Amount:* ₹{data.get('amount', 0)}\n"
+                        f"*Estimated delivery:* ~{data.get('estimated_delivery_minutes', 30)} minutes\n\n"
+                        f"Tap below to pay via UPI:"},
+             "accessory": {"type": "button", "text": {"type": "plain_text", "text": "💰 Pay Now"},
+                           "url": data.get("upi_payment_link", "https://www.zomato.com/"),
+                           "style": "primary", "action_id": "pay_upi"}},
+            {"type": "context", "elements": [
+                {"type": "mrkdwn", "text": "🔒 Secure UPI payment — your PIN is never shared with AutoLunch"}
+            ]},
+        ]
+        await _send_slack_message(f"💳 Pay ₹{data.get('amount', 0)} for your AutoLunch order", blocks)
+    except Exception as e:
+        logger.error(f"Checkout failed: {e}")
+        await _send_slack_message(f"⚠️ *Checkout failed:* {e}\n\nPlease order manually: https://www.zomato.com/")
+
+
+async def _handle_reject(restaurant_name: str, item_name: str, cart_id: str, net_total: float) -> None:
+    """Process rejection: record + re-decide + send new suggestion."""
+    try:
+        await _send_slack_message("Got it! 👎 Finding something else...")
+        result = await reject(RejectRequest(
+            restaurant_name=restaurant_name, item_name=item_name,
+            cart_id=cart_id, net_total=net_total,
+            reason="User declined this suggestion",
+        ))
+        data = result if isinstance(result, dict) else json.loads(result.body)
+        if data.get("status") == "ok":
+            await _send_slack_suggestion(data)
+        else:
+            await _send_slack_message("⚠️ Couldn't find another option. Please order manually: https://www.zomato.com/")
+    except Exception as e:
+        logger.error(f"Re-decide failed: {e}")
+        await _send_slack_message(f"⚠️ *Error finding alternative:* {e}")

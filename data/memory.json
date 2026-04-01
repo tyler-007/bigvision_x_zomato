@@ -1,5 +1,138 @@
 {
-  "past_orders": [],
+  "past_orders": [
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Roj+Ka+Khana+-+Daily+Meals",
+      "restaurant_id": "19160468",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "ctl_722148097",
+      "base_price": 198.0,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Roj+Ka+Khana+-+Daily+Meals",
+      "restaurant_id": "19160468",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "ctl_722148097",
+      "base_price": 198.0,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Dilli+Chaat",
+      "restaurant_id": "20395465",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "ctl_485265896",
+      "base_price": 158.4,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Dilli+Chaat",
+      "restaurant_id": "20395465",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "ctl_485265896",
+      "base_price": 158.4,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Dilli+Chaat",
+      "restaurant_id": "20395465",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "ctl_485265896",
+      "base_price": 158.4,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Dilli+Chaat",
+      "restaurant_id": "20395465",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "ctl_485265896",
+      "base_price": 158.4,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Dilli+Chaat",
+      "restaurant_id": "20395465",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "ctl_485265896",
+      "base_price": 158.4,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Dilli+Chaat",
+      "restaurant_id": "20395465",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "ctl_485265896",
+      "base_price": 158.4,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Roj+Ka+Khana+-+Daily+Meals",
+      "restaurant_id": "19160468",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "v_967361141",
+      "base_price": 198.0,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Roj+Ka+Khana+-+Daily+Meals",
+      "restaurant_id": "19160468",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "v_967361141",
+      "base_price": 198.0,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    },
+    {
+      "order_date": "2026-04-01",
+      "restaurant_name": "Roj+Ka+Khana+-+Daily+Meals",
+      "restaurant_id": "19160468",
+      "item_name": "Aloo+Puri+Sabji",
+      "item_id": "v_967361141",
+      "base_price": 198.0,
+      "net_total": 0.0,
+      "status": "placed",
+      "receipt_drive_url": null,
+      "sheet_row_id": null
+    }
+  ],
   "rejections": [
     {
       "rejection_date": "2026-03-12",
@@ -8,6 +141,14 @@
       "suggested_net_total": 195.95,
       "user_reason": "Too heavy for today, want something lighter",
       "llm_extracted_constraint": "Avoid heavy, rich dishes; suggest lighter options for lunch."
+    },
+    {
+      "rejection_date": "2026-04-01",
+      "suggested_restaurant": "Roj+Ka+Khana+-+Daily+Meals",
+      "suggested_item": "Aloo+Puri+Sabji",
+      "suggested_net_total": 223.73999999999998,
+      "user_reason": "User declined this suggestion",
+      "llm_extracted_constraint": "Avoid suggesting Aloo+Puri+Sabji for this user's lunch."
     }
   ],
   "learned_blocks": []

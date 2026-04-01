@@ -187,10 +187,13 @@ class RealZomatoMCPClient:
             # Parse inline menu items (Zomato returns top items with search)
             menu_items: list[MenuItem] = []
             for item in r.get("items", []):
+                # Use variant_id as primary ID (required by create_cart)
+                # Fall back to catalogue_id if variant_id not available
+                item_id = str(item.get("variant_id", item.get("catalogue_id", "")))
                 menu_items.append(MenuItem(
-                    item_id=str(item.get("catalogue_id", "")),
+                    item_id=item_id,
                     name=item.get("name", ""),
-                    base_price=float(item.get("price", 0)),
+                    base_price=float(item.get("price", item.get("min_price", 0))),
                     is_veg=item.get("is_veg", True),
                     category="",
                     cuisine_tags=[],
@@ -292,42 +295,41 @@ class RealZomatoMCPClient:
         """
         budget = settings.zomato.max_budget_inr if settings.zomato else 250
 
-        # Build item payload for create_cart
-        cart_item = {
-            "id": item.item_id,
-            "quantity": 1,
-        }
-        # If item_id looks like a variant_id, try that format
-        if item.item_id.startswith("v_"):
-            cart_item = {"variant_id": item.item_id, "quantity": 1}
-        elif item.item_id.startswith("ctl_"):
-            cart_item = {"catalogue_id": item.item_id, "quantity": 1}
+        # Build item payload — Zomato requires variant_id
+        # The search results give us catalogue_id; we store variant_id when available
+        variant_id = item.item_id
+        # If we have a catalogue_id, we need the variant_id from search results
+        # The search API returns both — variant_id is what create_cart needs
 
         try:
             raw = await self._call("create_cart", {
                 "res_id": int(restaurant.restaurant_id),
-                "items": [cart_item],
+                "items": [{"variant_id": variant_id, "quantity": 1}],
                 "address_id": self._address_id,
-                "payment_type": "UPI",
+                "payment_type": "upi_qr",
             })
 
-            # Parse cart response
-            cart_id = str(raw.get("cart_id", f"cart_{restaurant.restaurant_id}_{item.item_id}"))
-            bill = raw.get("bill_details", raw.get("bill", {}))
+            # Parse cart response — Zomato returns nested structure
+            cart_data = raw.get("cart", raw)
+            cart_id = str(cart_data.get("cart_id", f"cart_{restaurant.restaurant_id}_{item.item_id}"))
 
-            if isinstance(bill, dict):
-                net_total = float(bill.get("total", bill.get("grand_total", item.base_price * 1.13)))
-                delivery_fee = float(bill.get("delivery_fee", bill.get("delivery_charge", 0)))
-                gst = float(bill.get("gst", bill.get("tax", round(item.base_price * 0.05, 2))))
-                platform_fee = float(bill.get("platform_fee", bill.get("convenience_fee", 0)))
-                base_price = float(bill.get("item_total", bill.get("subtotal", item.base_price)))
-            else:
-                # Fallback: estimate from base price
-                net_total = float(raw.get("total", raw.get("grand_total", item.base_price * 1.13)))
-                delivery_fee = 0
-                gst = round(item.base_price * 0.05, 2)
-                platform_fee = 8.0
-                base_price = item.base_price
+            # Parse charge breakdown
+            charges = cart_data.get("charge_breakdown", {})
+            base_charges = charges.get("base_charges", [])
+            taxes = charges.get("taxes", [])
+
+            platform_fee = 0.0
+            delivery_fee = 0.0
+            for charge in base_charges:
+                ctype = charge.get("charge_type", "")
+                if "PLATFORM" in ctype:
+                    platform_fee = float(charge.get("amount", 0))
+                elif "DELIVERY" in ctype:
+                    delivery_fee = float(charge.get("amount", 0))
+
+            gst = sum(float(t.get("tax_amount", 0)) for t in taxes)
+            base_price = item.base_price
+            net_total = round(base_price + delivery_fee + platform_fee + gst, 2)
 
         except Exception as e:
             logger.warning(f"Cart creation failed, estimating: {e}")
