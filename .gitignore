@@ -31,3 +31,4 @@ logs/
 # Uncomment below if you don't want to commit memory/prefs:
 # data/memory.json
 # data/preferences.json
+data/zomato_oauth.json
