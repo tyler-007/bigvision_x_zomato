@@ -328,8 +328,18 @@ class RealZomatoMCPClient:
                     delivery_fee = float(charge.get("amount", 0))
 
             gst = sum(float(t.get("tax_amount", 0)) for t in taxes)
-            base_price = item.base_price
-            net_total = round(base_price + delivery_fee + platform_fee + gst, 2)
+            base_price = float(cart_data.get("item_total", item.base_price))
+
+            # Use Zomato's final_amount if available (includes auto-applied promos)
+            final_amount = cart_data.get("final_amount")
+            promo = cart_data.get("promo_code")
+            promo_discount = float(cart_data.get("promo_discount_amount", 0))
+            if final_amount is not None:
+                net_total = round(float(final_amount), 2)
+                if promo:
+                    logger.info(f"Promo auto-applied: {promo} (-₹{promo_discount})")
+            else:
+                net_total = round(base_price + delivery_fee + platform_fee + gst, 2)
 
         except Exception as e:
             logger.warning(f"Cart creation failed, estimating: {e}")
@@ -360,8 +370,25 @@ class RealZomatoMCPClient:
         return result
 
     async def checkout(self, cart_id: str) -> CheckoutResult:
-        """Place a real order on Zomato."""
+        """
+        Place a real order on Zomato.
+        If checkout_cart fails (e.g. AmountMismatchError), we still return
+        the cart details so the user can complete payment in the Zomato app.
+        """
         raw = await self._call("checkout_cart", {"cart_id": cart_id})
+
+        # Check for error response
+        error_text = raw.get("raw_text", "") if isinstance(raw, dict) else str(raw)
+        if "Error" in error_text:
+            logger.warning(f"Zomato checkout returned error: {error_text}")
+            # Return a result that tells the user to complete in-app
+            return CheckoutResult(
+                order_id=f"pending_{cart_id[:8]}",
+                upi_payment_link=f"https://www.zomato.com/",
+                upi_qr_code_url=None,
+                amount_payable=0,
+                estimated_delivery_minutes=30,
+            )
 
         return CheckoutResult(
             order_id=str(raw.get("order_id", raw.get("id", f"ord_{cart_id[-8:]}"))),

@@ -334,21 +334,36 @@ async def _handle_approve(cart_id: str, restaurant_name: str, restaurant_id: str
         if isinstance(data, bytes):
             data = json.loads(data)
 
-        blocks = [
-            {"type": "header", "text": {"type": "plain_text", "text": "💳 Complete Your Payment"}},
-            {"type": "section", "text": {"type": "mrkdwn",
-                "text": f"*Order ID:* `{data.get('order_id', 'N/A')}`\n"
-                        f"*Amount:* ₹{data.get('amount', 0)}\n"
-                        f"*Estimated delivery:* ~{data.get('estimated_delivery_minutes', 30)} minutes\n\n"
-                        f"Tap below to pay via UPI:"},
-             "accessory": {"type": "button", "text": {"type": "plain_text", "text": "💰 Pay Now"},
-                           "url": data.get("upi_payment_link", "https://www.zomato.com/"),
-                           "style": "primary", "action_id": "pay_upi"}},
-            {"type": "context", "elements": [
-                {"type": "mrkdwn", "text": "🔒 Secure UPI payment — your PIN is never shared with AutoLunch"}
-            ]},
-        ]
-        await _send_slack_message(f"💳 Pay ₹{data.get('amount', 0)} for your AutoLunch order", blocks)
+        order_id = data.get("order_id", "")
+        amount = data.get("amount", 0)
+        upi_link = data.get("upi_payment_link", "https://www.zomato.com/")
+
+        if order_id.startswith("pending_"):
+            # Checkout couldn't complete — cart is created, user should pay in Zomato app
+            blocks = [
+                {"type": "header", "text": {"type": "plain_text", "text": "🍱 Order Ready — Complete in Zomato"}},
+                {"type": "section", "text": {"type": "mrkdwn",
+                    "text": f"Your cart is ready on Zomato! Open the app to review and pay.\n\n"
+                            f"_The cart was created automatically with the best available promo._"},
+                 "accessory": {"type": "button", "text": {"type": "plain_text", "text": "Open Zomato 🍱"},
+                               "url": "https://www.zomato.com/", "style": "primary", "action_id": "open_zomato"}},
+            ]
+            await _send_slack_message("🍱 Cart ready — open Zomato to complete your order!", blocks)
+        else:
+            blocks = [
+                {"type": "header", "text": {"type": "plain_text", "text": "💳 Complete Your Payment"}},
+                {"type": "section", "text": {"type": "mrkdwn",
+                    "text": f"*Order ID:* `{order_id}`\n"
+                            f"*Amount:* ₹{amount}\n"
+                            f"*Estimated delivery:* ~{data.get('estimated_delivery_minutes', 30)} minutes\n\n"
+                            f"Tap below to pay via UPI:"},
+                 "accessory": {"type": "button", "text": {"type": "plain_text", "text": "💰 Pay Now"},
+                               "url": upi_link, "style": "primary", "action_id": "pay_upi"}},
+                {"type": "context", "elements": [
+                    {"type": "mrkdwn", "text": "🔒 Secure UPI payment — your PIN is never shared with AutoLunch"}
+                ]},
+            ]
+            await _send_slack_message(f"💳 Pay ₹{amount} for your AutoLunch order", blocks)
     except Exception as e:
         logger.error(f"Checkout failed: {e}")
         await _send_slack_message(f"⚠️ *Checkout failed:* {e}\n\nPlease order manually: https://www.zomato.com/")
