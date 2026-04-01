@@ -342,10 +342,10 @@ class RealZomatoMCPClient:
             else:
                 net_total = round(base_price + delivery_fee + platform_fee + gst, 2)
 
-            # Store shareable link for the checkout response
-            self._last_shareable_link = shareable_link
-            self._last_promo = promo or ""
-            self._last_promo_discount = promo_discount
+            # These will be included in the CartSimulationResult
+            _shareable = shareable_link
+            _promo = promo or ""
+            _promo_disc = promo_discount
 
         except Exception as e:
             logger.warning(f"Cart creation failed, estimating: {e}")
@@ -367,6 +367,9 @@ class RealZomatoMCPClient:
             gst=gst,
             net_total=net_total,
             within_budget=within_budget,
+            shareable_link=_shareable,
+            promo_code=_promo,
+            promo_discount=_promo_disc,
         )
 
         logger.info(f"Real cart: {item.name} from {restaurant.name} → ₹{net_total} (budget_ok={within_budget})")

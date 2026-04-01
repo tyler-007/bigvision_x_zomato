@@ -45,6 +45,9 @@ app = FastAPI(title="AutoLunch API", version="1.0")
 _daily_state: dict = {"date": "", "rejections": 0}
 MAX_REJECTIONS = 2
 
+# Cache cart_id → shareable_link (so approve flow can use it)
+_cart_links: dict[str, str] = {}
+
 
 class RejectRequest(BaseModel):
     restaurant_name: str
@@ -75,6 +78,9 @@ async def decide(constraints: list[str] | None = None):
     engine = LLMDecisionEngine()
     try:
         result = await engine.decide(extra_constraints=constraints)
+        # Cache shareable link for the approve flow
+        if result.cart.shareable_link:
+            _cart_links[result.cart.cart_id] = result.cart.shareable_link
         return {
             "status": "ok",
             "restaurant_name": result.decision.restaurant_name,
@@ -323,20 +329,30 @@ async def slack_interact(request: Request):
 
 
 async def _handle_approve(cart_id: str, restaurant_name: str, restaurant_id: str, item_name: str, item_id: str, base_price: float) -> None:
-    """Process approval: checkout + send UPI link to Slack."""
+    """Process approval: send cart link to Slack so user can pay in Zomato app."""
     try:
-        result = await checkout(CheckoutRequest(
-            cart_id=cart_id, restaurant_name=restaurant_name,
-            restaurant_id=restaurant_id, item_name=item_name,
-            item_id=item_id, base_price=base_price,
-        ))
-        data = result if isinstance(result, dict) else result.body
-        if isinstance(data, bytes):
-            data = json.loads(data)
+        # Use the cached shareable link (set during /decide)
+        cart_link = _cart_links.get(cart_id, "")
 
-        order_id = data.get("order_id", "")
-        amount = data.get("amount", 0)
-        upi_link = data.get("upi_payment_link", "https://www.zomato.com/")
+        if not cart_link:
+            # Try checkout as fallback
+            try:
+                result = await checkout(CheckoutRequest(
+                    cart_id=cart_id, restaurant_name=restaurant_name,
+                    restaurant_id=restaurant_id, item_name=item_name,
+                    item_id=item_id, base_price=base_price,
+                ))
+                data = result if isinstance(result, dict) else json.loads(result.body if isinstance(result.body, bytes) else "{}")
+                cart_link = data.get("upi_payment_link", "")
+            except Exception as e:
+                logger.warning(f"Checkout fallback failed: {e}")
+
+        if not cart_link:
+            cart_link = "https://www.zomato.com/"
+
+        order_id = f"pending_{cart_id[:8]}" if cart_link else ""
+        amount = base_price
+        upi_link = cart_link
 
         if order_id.startswith("pending_"):
             # Checkout couldn't complete — cart is created, user pays via shareable link

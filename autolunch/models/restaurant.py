@@ -59,6 +59,9 @@ class CartSimulationResult(BaseModel):
     gst: float
     net_total: float           # The only number that matters for the ₹250 check
     within_budget: bool        # net_total <= settings.zomato.max_budget_inr
+    shareable_link: str = ""   # Zomato deep link to pre-built cart
+    promo_code: str = ""       # Auto-applied promo code
+    promo_discount: float = 0  # Discount amount from promo
 
 
 class LLMOrderDecision(BaseModel):
