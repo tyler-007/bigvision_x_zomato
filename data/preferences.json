@@ -1,29 +1,36 @@
 {
-    "diet_type": "vegetarian",
-    "spice_tolerance": 3,
-    "preferred_meal_styles": [
-        "roti_based",
-        "rice_bowl",
-        "sandwich_wrap"
+  "diet_type": "vegetarian",
+  "spice_tolerance": 3,
+  "preferred_meal_styles": [
+    "rice_bowl",
+    "roti_based",
+    "sandwich_wrap",
+    "noodles_pasta",
+    "salad_light"
+  ],
+  "avoid_repeat_days": 3,
+  "min_restaurant_rating": 4.0,
+  "min_review_count": 1000,
+  "max_net_budget_inr": 250,
+  "max_distance_km": 7,
+  "guardrails": {
+    "blocked_restaurants": [],
+    "blocked_ingredients": [],
+    "blocked_cuisines": [
+      "sambhar"
     ],
-    "avoid_repeat_days": 3,
-    "min_restaurant_rating": 4.0,
-    "min_review_count": 1000,
-    "max_net_budget_inr": 250,
-    "max_distance_km": 7,
-    "guardrails": {
-        "blocked_restaurants": [],
-        "blocked_ingredients": [],
-        "blocked_cuisines": [
-            "fast_food"
-        ],
-        "preferred_restaurants": [],
-        "preferred_cuisines": [
-            "north_indian",
-            "south_indian",
-            "chinese"
-        ]
-    },
-    "preferred_delivery_by": "13:30",
-    "additional_notes": "Prefer freshly cooked meals over packaged or frozen food. Avoid overly oily dishes. Light meals preferred on Mondays."
+    "preferred_restaurants": [],
+    "preferred_cuisines": [
+      "north_indian",
+      "south_indian",
+      "chinese",
+      "bengali",
+      "italian",
+      "continental",
+      "healthy"
+    ]
+  },
+  "preferred_delivery_by": "13:30",
+  "additional_notes": "light meals",
+  "_zomato_address_id": "877033185"
 }

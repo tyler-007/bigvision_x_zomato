@@ -49,6 +49,16 @@ MAX_REJECTIONS = 2
 _cart_cache: dict[str, dict] = {}
 
 
+def _safe_task(coro):
+    """Wrap asyncio.create_task to ensure exceptions are logged, not swallowed."""
+    async def _wrapper():
+        try:
+            await coro
+        except Exception as e:
+            logger.exception(f"Background task failed: {e}")
+    return asyncio.create_task(_wrapper())
+
+
 class RejectRequest(BaseModel):
     restaurant_name: str
     item_name: str
@@ -319,11 +329,17 @@ async def _send_slack_message(text: str, blocks: list | None = None) -> None:
     import httpx
     from autolunch.config.settings import settings
     if not settings.slack:
+        logger.warning("[SLACK] Not configured, skipping")
         return
     async with httpx.AsyncClient() as client:
-        await client.post("https://slack.com/api/chat.postMessage",
+        r = await client.post("https://slack.com/api/chat.postMessage",
             headers={"Authorization": f"Bearer {settings.slack.bot_token}", "Content-Type": "application/json"},
             json={"channel": settings.slack.channel_id, "text": text, **({"blocks": blocks} if blocks else {})})
+        result = r.json()
+        if result.get("ok"):
+            logger.info(f"[SLACK] Message sent: {text[:60]}")
+        else:
+            logger.error(f"[SLACK] Send failed: {result.get('error')}")
 
 
 @app.post("/trigger")
@@ -361,6 +377,12 @@ async def slack_interact(request: Request):
         payload = json.loads(body_str)
 
     action = payload["actions"][0]
+
+    # URL-type buttons (e.g. "Open My Cart") don't have a value — just acknowledge
+    if "value" not in action:
+        logger.info(f"[SLACK] URL button clicked: {action.get('action_id', 'unknown')}")
+        return Response(status_code=200)
+
     parts = action["value"].split("|")
     # Format: action_type|cart_id|restaurant_name|restaurant_id|item_name|item_id|base_price|net_total
     action_type = parts[0]
@@ -382,14 +404,14 @@ async def slack_interact(request: Request):
 
     if action_type == "approve":
         # Checkout and send UPI link
-        asyncio.create_task(_handle_approve(cart_id, restaurant_name, restaurant_id, item_name, item_id, base_price))
+        _safe_task(_handle_approve(cart_id, restaurant_name, restaurant_id, item_name, item_id, base_price))
         return Response(status_code=200)
 
     elif action_type == "reject":
         _daily_state["rejections"] += 1
 
         if _daily_state["rejections"] >= MAX_REJECTIONS:
-            asyncio.create_task(_send_slack_message(
+            _safe_task(_send_slack_message(
                 "✋ *AutoLunch: Order Manually Today*\n\n"
                 "You've passed on 2 suggestions. No problem — today's your call!\n"
                 "Tap here to open Zomato: https://www.zomato.com/"
@@ -397,7 +419,7 @@ async def slack_interact(request: Request):
             return Response(status_code=200)
 
         # Reject and re-suggest
-        asyncio.create_task(_handle_reject(restaurant_name, item_name, cart_id, net_total))
+        _safe_task(_handle_reject(restaurant_name, item_name, cart_id, net_total))
         return Response(status_code=200)
 
     return Response(status_code=200)
@@ -405,46 +427,67 @@ async def slack_interact(request: Request):
 
 async def _handle_approve(cart_id: str, restaurant_name: str, restaurant_id: str, item_name: str, item_id: str, base_price: float) -> None:
     """Process approval: log to Sheet, send cart link to Slack."""
+    logger.info(f"[APPROVE] Starting approval flow for {item_name} from {restaurant_name} (cart={cart_id})")
     try:
         # Get cached cart details (shareable link, promo, pricing)
         cart_info = _cart_cache.get(cart_id, {})
         cart_link = cart_info.get("shareable_link", "")
+        logger.info(f"[APPROVE] Cart cache hit={bool(cart_info)}, shareable_link={bool(cart_link)}, keys={list(cart_info.keys())}")
 
-        # Log to Google Sheets
+        # Log to Google Sheets (non-blocking with timeout)
         try:
             from autolunch.services.sheets.logger import get_sheets_logger
             sheets = get_sheets_logger()
             if sheets:
-                sheets.log_order(
-                    restaurant_name=restaurant_name,
-                    item_name=item_name,
-                    base_price=base_price,
-                    promo_code=cart_info.get("promo_code", ""),
-                    promo_discount=cart_info.get("promo_discount", 0),
-                    delivery_fee=cart_info.get("delivery_fee", 0),
-                    platform_fee=cart_info.get("platform_fee", 0),
-                    gst=cart_info.get("gst", 0),
-                    net_total=cart_info.get("net_total", base_price),
-                    cart_id=cart_id,
-                    status="approved",
+                logger.info("[APPROVE] Logging to Google Sheets...")
+                loop = asyncio.get_event_loop()
+                await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: sheets.log_order(
+                        restaurant_name=restaurant_name,
+                        item_name=item_name,
+                        base_price=base_price,
+                        promo_code=cart_info.get("promo_code", ""),
+                        promo_discount=cart_info.get("promo_discount", 0),
+                        delivery_fee=cart_info.get("delivery_fee", 0),
+                        platform_fee=cart_info.get("platform_fee", 0),
+                        gst=cart_info.get("gst", 0),
+                        net_total=cart_info.get("net_total", base_price),
+                        cart_id=cart_id,
+                        status="approved",
+                    )),
+                    timeout=5.0,
                 )
+                logger.info("[APPROVE] Sheets logged successfully")
+        except asyncio.TimeoutError:
+            logger.warning("[APPROVE] Sheets logging timed out after 5s, continuing")
         except Exception as e:
             logger.warning(f"Sheets logging failed (non-blocking): {e}")
 
         if not cart_link:
-            # Try checkout as fallback
-            try:
-                result = await checkout(CheckoutRequest(
-                    cart_id=cart_id, restaurant_name=restaurant_name,
-                    restaurant_id=restaurant_id, item_name=item_name,
-                    item_id=item_id, base_price=base_price,
-                ))
-                data = result if isinstance(result, dict) else json.loads(result.body if isinstance(result.body, bytes) else "{}")
-                cart_link = data.get("upi_payment_link", "")
-            except Exception as e:
-                logger.warning(f"Checkout fallback failed: {e}")
+            # Only try checkout if we have a real Zomato cart ID (not synthetic)
+            if cart_id.startswith("cart_"):
+                logger.warning(f"[APPROVE] Synthetic cart_id detected ({cart_id}), skipping checkout — Zomato cart creation failed earlier")
+            else:
+                logger.info(f"[APPROVE] No shareable link, trying checkout fallback with cart_id={cart_id}")
+                try:
+                    result = await asyncio.wait_for(
+                        checkout(CheckoutRequest(
+                            cart_id=cart_id, restaurant_name=restaurant_name,
+                            restaurant_id=restaurant_id, item_name=item_name,
+                            item_id=item_id, base_price=base_price,
+                        )),
+                        timeout=15.0,
+                    )
+                    data = result if isinstance(result, dict) else json.loads(result.body if isinstance(result.body, bytes) else "{}")
+                    cart_link = data.get("upi_payment_link", "")
+                    logger.info(f"[APPROVE] Checkout result: {data}")
+                except asyncio.TimeoutError:
+                    logger.error("[APPROVE] Checkout timed out after 15s")
+                except Exception as e:
+                    logger.error(f"[APPROVE] Checkout fallback failed: {e}", exc_info=True)
 
         if not cart_link:
+            logger.info("[APPROVE] No cart link from any source, using generic Zomato URL")
             cart_link = "https://www.zomato.com/"
 
         order_id = f"pending_{cart_id[:8]}" if cart_link else ""
@@ -462,7 +505,9 @@ async def _handle_approve(cart_id: str, restaurant_name: str, restaurant_id: str
                  "accessory": {"type": "button", "text": {"type": "plain_text", "text": "🛒 Open My Cart"},
                                "url": cart_link, "style": "primary", "action_id": "open_cart"}},
             ]
+            logger.info(f"[APPROVE] Sending 'Cart Ready' Slack message with link: {cart_link[:50]}...")
             await _send_slack_message(f"🍱 Cart ready — tap to open in Zomato!", blocks)
+            logger.info("[APPROVE] Slack message sent successfully")
         else:
             blocks = [
                 {"type": "header", "text": {"type": "plain_text", "text": "💳 Complete Your Payment"}},

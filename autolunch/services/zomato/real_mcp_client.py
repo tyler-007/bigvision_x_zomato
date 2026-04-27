@@ -122,10 +122,33 @@ class RealZomatoMCPClient:
         result = await self._session.call_tool(tool, arguments=args)
         for content in result.content:
             if hasattr(content, 'text'):
+                text = content.text
                 try:
-                    return json.loads(content.text)
+                    return json.loads(text)
                 except json.JSONDecodeError:
-                    return {"raw_text": content.text}
+                    # Try to extract JSON from markdown code blocks or mixed text
+                    import re
+                    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+                    if json_match:
+                        try:
+                            return json.loads(json_match.group(1))
+                        except json.JSONDecodeError:
+                            pass
+                    # Try to find any JSON object in the text
+                    brace_start = text.find('{')
+                    if brace_start >= 0:
+                        # Find matching closing brace
+                        depth = 0
+                        for i, c in enumerate(text[brace_start:], brace_start):
+                            if c == '{': depth += 1
+                            elif c == '}': depth -= 1
+                            if depth == 0:
+                                try:
+                                    return json.loads(text[brace_start:i+1])
+                                except json.JSONDecodeError:
+                                    break
+                    logger.warning(f"MCP {tool} returned non-JSON text ({len(text)} chars): {text[:500]}")
+                    return {"raw_text": text}
         return {}
 
     # ── Public API (matches mock client interface) ───────────────────────────
@@ -306,12 +329,48 @@ class RealZomatoMCPClient:
                 "res_id": int(restaurant.restaurant_id),
                 "items": [{"variant_id": variant_id, "quantity": 1}],
                 "address_id": self._address_id,
-                "payment_type": "upi_qr",
+                "payment_type": "upi",
             })
+
+            logger.info(f"[CART RAW] create_cart response keys: {list(raw.keys()) if isinstance(raw, dict) else type(raw)}")
+            logger.info(f"[CART RAW] Full response: {json.dumps(raw, default=str)[:2000]}")
 
             # Parse cart response — Zomato returns nested structure
             cart_data = raw.get("cart", raw)
-            cart_id = str(cart_data.get("cart_id", f"cart_{restaurant.restaurant_id}_{item.item_id}"))
+
+            # Handle raw_text responses — parse cart details from plain text
+            if list(cart_data.keys()) == ["raw_text"]:
+                raw_text = cart_data["raw_text"]
+                logger.info(f"[CART] Raw text from Zomato ({len(raw_text)} chars): {raw_text[:1000]}")
+                # Try to extract key-value pairs from the text
+                import re
+                def _extract(pattern, text, default=None):
+                    m = re.search(pattern, text, re.IGNORECASE)
+                    return m.group(1).strip() if m else default
+
+                cart_id = _extract(r'cart[_\s]?id[:\s]+["\']?(\S+?)["\']?(?:\s|,|$)', raw_text) or f"cart_{restaurant.restaurant_id}_{item.item_id}"
+                shareable_link = _extract(r'(?:shareable[_\s]?link|cart[_\s]?link|share[_\s]?url)[:\s]+["\']?(https?\S+)["\']?', raw_text) or ""
+                # Try to find total/amount
+                total_str = _extract(r'(?:grand[_\s]?total|total|final[_\s]?amount|net[_\s]?total|amount)[:\s]+[₹]?(\d+\.?\d*)', raw_text)
+                delivery_str = _extract(r'(?:delivery[_\s]?(?:fee|charge))[:\s]+[₹]?(\d+\.?\d*)', raw_text)
+                platform_str = _extract(r'(?:platform[_\s]?(?:fee|charge))[:\s]+[₹]?(\d+\.?\d*)', raw_text)
+                gst_str = _extract(r'(?:gst|tax)[:\s]+[₹]?(\d+\.?\d*)', raw_text)
+                promo_code = _extract(r'(?:promo|coupon)[_\s]?(?:code)?[:\s]+["\']?(\S+?)["\']?(?:\s|,|$)', raw_text)
+                promo_disc_str = _extract(r'(?:promo[_\s]?discount|discount)[:\s]+[₹]?(\d+\.?\d*)', raw_text)
+
+                net_total = float(total_str) if total_str else round(item.base_price * 1.05 + 8, 2)
+                delivery_fee = float(delivery_str) if delivery_str else 0.0
+                platform_fee = float(platform_str) if platform_str else 0.0
+                gst = float(gst_str) if gst_str else 0.0
+                base_price = item.base_price
+                _shareable = shareable_link
+                _promo = promo_code or ""
+                _promo_disc = float(promo_disc_str) if promo_disc_str else 0.0
+
+                logger.info(f"[CART] Parsed from raw text: cart_id={cart_id}, net={net_total}, link={bool(shareable_link)}, promo={_promo}")
+            else:
+                cart_id = str(cart_data.get("cart_id", f"cart_{restaurant.restaurant_id}_{item.item_id}"))
+                logger.info(f"[CART] Parsed cart_id={cart_id}, cart_data keys={list(cart_data.keys()) if isinstance(cart_data, dict) else 'N/A'}")
 
             # Parse charge breakdown
             charges = cart_data.get("charge_breakdown", {})
